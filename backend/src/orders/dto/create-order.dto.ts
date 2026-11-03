@@ -89,4 +89,13 @@ export class CreateOrderDto {
   @IsString({ message: 'note phải là chuỗi' })
   @MaxLength(200, { message: 'note tối đa 200 ký tự' })
   note?: string;
+
+  @ApiPropertyOptional({
+    description: 'Mã voucher cần áp dụng (không phân biệt hoa thường)',
+    example: 'WELCOME10',
+  })
+  @IsOptional()
+  @IsString({ message: 'voucherCode phải là chuỗi' })
+  @MaxLength(50, { message: 'voucherCode tối đa 50 ký tự' })
+  voucherCode?: string;
 }

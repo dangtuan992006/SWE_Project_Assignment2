@@ -1,9 +1,11 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
-import type { CartItem as CartItemType } from '@/types/brewlite';
 import CartItem from '@/components/CartItem';
+import CheckoutModal from '@/components/CheckoutModal';
 import { useCartStore } from '@/stores/cartStore';
+import { useRouter } from 'next/navigation';
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('vi-VN', {
@@ -12,57 +14,24 @@ const formatCurrency = (amount: number) =>
     maximumFractionDigits: 0,
   }).format(amount);
 
-const sampleItems: CartItemType[] = [
-  {
-    id: 'sample-cappuccino-m',
-    productId: '20000000-0000-4000-8000-000000000001',
-    productName: 'Cappuccino',
-    size: 'M',
-    selectedToppings: [],
-    unitPrice: 45000,
-    quantity: 1,
-    subtotal: 45000,
-  },
-  {
-    id: 'sample-peach-tea-l',
-    productId: '20000000-0000-4000-8000-000000000004',
-    productName: 'Trà đào',
-    size: 'L',
-    selectedToppings: [
-      { id: 'extra-peach', name: 'Thêm đào', price: 8000 },
-    ],
-    unitPrice: 52000,
-    quantity: 2,
-    subtotal: 104000,
-  },
-];
-
 export default function CartPage() {
+  const router = useRouter();
   const items = useCartStore((state) => state.items);
-  const addItem = useCartStore((state) => state.addItem);
   const removeItem = useCartStore((state) => state.removeItem);
   const updateQuantity = useCartStore((state) => state.updateQuantity);
   const clearCart = useCartStore((state) => state.clearCart);
   const totalQuantity = useCartStore((state) => state.getTotalQuantity());
   const totalAmount = useCartStore((state) => state.getTotalAmount());
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
-  const sampleControls = (
-    <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-3">
-      <p className="text-xs font-semibold text-amber-900">Dữ liệu mẫu để test Cart</p>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {sampleItems.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => addItem(item)}
-            className="rounded-lg bg-amber-800 px-3 py-2 text-xs font-bold text-white hover:bg-amber-900"
-          >
-            + {item.productName} {item.size}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
+  const openCheckout = () => {
+    const token = localStorage.getItem('brewlite_token');
+    if (!token) {
+      router.push('/login?redirect=/cart');
+      return;
+    }
+    setIsCheckoutOpen(true);
+  };
 
   if (items.length === 0) {
     return (
@@ -80,7 +49,6 @@ export default function CartPage() {
             Xem menu
           </Link>
         </div>
-        {sampleControls}
       </section>
     );
   }
@@ -112,8 +80,6 @@ export default function CartPage() {
         ))}
       </div>
 
-      {sampleControls}
-
       <div className="rounded-xl bg-amber-50 p-4">
         <div className="flex items-center justify-between text-base font-bold text-slate-900">
           <span>Tổng cộng</span>
@@ -121,13 +87,20 @@ export default function CartPage() {
         </div>
         <button
           type="button"
-          disabled
-          className="mt-4 w-full cursor-not-allowed rounded-lg bg-slate-300 px-4 py-3 text-sm font-bold text-slate-600"
-          title="Chức năng thanh toán sẽ được triển khai ở task tiếp theo"
+          onClick={openCheckout}
+          className="mt-4 w-full rounded-lg bg-amber-800 px-4 py-3 text-sm font-bold text-white hover:bg-amber-900"
         >
-          Thanh toán (sẽ triển khai sau)
+          Thanh toán
         </button>
       </div>
+
+      {isCheckoutOpen && (
+        <CheckoutModal
+          items={items}
+          totalAmount={totalAmount}
+          onClose={() => setIsCheckoutOpen(false)}
+        />
+      )}
     </section>
   );
 }
