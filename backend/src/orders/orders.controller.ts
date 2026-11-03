@@ -152,12 +152,6 @@ export class OrdersController {
     return order;
   }
 
-  @Post('preview')
-  @ApiOperation({ summary: 'Tính tạm tính và giảm giá voucher trước khi đặt đơn' })
-  async preview(@Body() dto: CreateOrderDto) {
-    return this.ordersService.quote(dto);
-  }
-
   private resolveKey(raw: string | undefined): string {
     if (raw === undefined) return randomUUID();
     const key = raw.trim();

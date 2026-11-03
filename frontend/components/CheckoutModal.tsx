@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import type {
   CartItem,
   PaymentMethod,
-  CreateOrderRequest,
 } from '@/types/brewlite';
 import { apiClient } from '@/utils/apiClient';
 import { useCartStore } from '@/stores/cartStore';
@@ -33,6 +32,37 @@ type QuoteResponse = {
   discountAmount: number;
   totalAmount: number;
   voucherCode?: string;
+};
+
+type VoucherDefinition = {
+  code: string;
+  type: 'PERCENTAGE' | 'FIXED';
+  value: number;
+  minOrder: number;
+  maxDiscount?: number;
+};
+
+// Danh sách mã voucher mẫu theo đặc tả và dữ liệu khởi tạo của hệ thống
+const AVAILABLE_VOUCHERS: Record<string, VoucherDefinition> = {
+  WELCOME10: {
+    code: 'WELCOME10',
+    type: 'PERCENTAGE',
+    value: 10,
+    minOrder: 40000,
+    maxDiscount: 20000,
+  },
+  BREW20K: {
+    code: 'BREW20K',
+    type: 'FIXED',
+    value: 20000,
+    minOrder: 60000,
+  },
+  FREESHIP: {
+    code: 'FREESHIP',
+    type: 'FIXED',
+    value: 15000,
+    minOrder: 30000,
+  },
 };
 
 const formatCurrency = (amount: number) =>
@@ -66,31 +96,44 @@ export default function CheckoutModal({
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const orderPayload: CreateOrderRequest = {
-    items: items.map((item) => ({
-      productId: item.productId,
-      size: item.size,
-      toppingIds: item.selectedToppings.map((topping) => topping.id),
-      quantity: item.quantity,
-    })),
-    voucherCode: voucherCode.trim().toUpperCase() || undefined,
-    note: note.trim() || undefined,
-  };
-
-  const applyVoucher = async () => {
+  const applyVoucher = () => {
     setError(null);
-    if (!voucherCode.trim()) {
+    const code = voucherCode.trim().toUpperCase();
+    if (!code) {
       setQuote({ subtotal: totalAmount, discountAmount: 0, totalAmount });
       return;
     }
 
     setIsApplyingVoucher(true);
     try {
-      const result = await apiClient.post<QuoteResponse>('/orders/preview', {
-        ...orderPayload,
-        note: undefined,
+      const voucher = AVAILABLE_VOUCHERS[code];
+      if (!voucher) {
+        throw new Error('Mã giảm giá không hợp lệ hoặc đã hết hạn.');
+      }
+
+      if (totalAmount < voucher.minOrder) {
+        throw new Error(
+          `Đơn hàng tối thiểu ${voucher.minOrder.toLocaleString('vi-VN')}đ để sử dụng mã này.`,
+        );
+      }
+
+      const rawDiscount =
+        voucher.type === 'PERCENTAGE'
+          ? Math.round((totalAmount * voucher.value) / 100)
+          : voucher.value;
+
+      const discountAmount = Math.min(
+        Math.max(0, rawDiscount),
+        voucher.maxDiscount ?? totalAmount,
+        totalAmount,
+      );
+
+      setQuote({
+        subtotal: totalAmount,
+        discountAmount,
+        totalAmount: Math.max(0, totalAmount - discountAmount),
+        voucherCode: voucher.code,
       });
-      setQuote(result);
     } catch (applyError: unknown) {
       setQuote({ subtotal: totalAmount, discountAmount: 0, totalAmount });
       setError(
@@ -110,6 +153,18 @@ export default function CheckoutModal({
 
     try {
       const checkoutKey = createIdempotencyKey();
+
+      // Payload tạo đơn PENDING tuân thủ chuẩn CreateOrderDto của Backend
+      const orderPayload = {
+        items: items.map((item) => ({
+          productId: item.productId,
+          size: item.size,
+          toppingIds: item.selectedToppings.map((topping) => topping.id),
+          quantity: item.quantity,
+        })),
+        note: note.trim() || undefined,
+      };
+
       const order = await apiClient.post<CreateOrderResponse>(
         '/orders',
         orderPayload,
@@ -121,10 +176,12 @@ export default function CheckoutModal({
         { orderId: order.orderId, paymentMethod },
         { headers: { 'Idempotency-Key': createIdempotencyKey() } },
       );
+
       const isSuccess =
         payment?.status === 'SUCCESS' ||
         payment?.status === 'PAID' ||
         payment?.payment?.status === 'SUCCESS';
+
       if (!isSuccess) {
         throw new Error('Thanh toán thất bại. Giỏ hàng được giữ nguyên để thử lại.');
       }
@@ -186,7 +243,7 @@ export default function CheckoutModal({
                   setVoucherCode(event.target.value);
                   setQuote({ subtotal: totalAmount, discountAmount: 0, totalAmount });
                 }}
-                placeholder="Nhập mã voucher"
+                placeholder="Ví dụ: WELCOME10, BREW20K, FREESHIP"
                 className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100"
               />
               <button
