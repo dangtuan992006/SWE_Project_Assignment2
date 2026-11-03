@@ -161,6 +161,7 @@ const drinks = [
 
 async function main() {
   await prisma.$transaction(async (tx) => {
+    // 1. Nạp Categories
     for (const category of categories) {
       await tx.category.upsert({
         where: { id: category.id },
@@ -169,9 +170,9 @@ async function main() {
       });
     }
 
+    // 2. Nạp Drinks
     for (const [index, drink] of drinks.entries()) {
       const id = `20000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`;
-
       const data = {
         name: drink.name,
         description: drink.description,
@@ -191,9 +192,54 @@ async function main() {
         update: data,
       });
     }
-  });
 
-  console.log('Đã seed 2 danh mục và 10 sản phẩm.');
+    // 3. Nạp Vouchers (VẪN NẰM TRONG TRANSACTION)
+    const vouchers = [
+      {
+        code: 'WELCOME10',
+        discountType: 'PERCENTAGE',
+        discountValue: 10,
+        minOrderValue: 50000,
+        maxDiscount: 20000,
+        usageLimit: 100,
+        startDate: new Date(),
+        endDate: new Date(new Date().setMonth(new Date().getMonth() + 1)),
+        isActive: true,
+      },
+      {
+        code: 'BREW20K',
+        discountType: 'FIXED_AMOUNT',
+        discountValue: 20000,
+        minOrderValue: 100000,
+        maxDiscount: 20000,
+        usageLimit: 50,
+        startDate: new Date(),
+        endDate: new Date(new Date().setMonth(new Date().getMonth() + 1)),
+        isActive: true,
+      },
+      {
+        code: 'FREESHIP',
+        discountType: 'FIXED_AMOUNT',
+        discountValue: 15000,
+        minOrderValue: 70000,
+        maxDiscount: 15000,
+        usageLimit: 200,
+        startDate: new Date(),
+        endDate: new Date(new Date().setMonth(new Date().getMonth() + 1)),
+        isActive: true,
+      },
+    ];
+
+    for (const voucher of vouchers) {
+      await tx.voucher.upsert({
+        where: { code: voucher.code },
+        create: voucher as any,
+        update: voucher as any,
+      });
+    }
+  }); // <--- ĐÓNG TRANSACTION Ở ĐÂY LÀ ĐÚNG
+
+  console.log('Đã seed 2 danh mục, 10 sản phẩm và 3 voucher.');
 }
 
 main()
