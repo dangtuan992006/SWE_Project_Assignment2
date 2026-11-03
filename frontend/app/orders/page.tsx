@@ -50,7 +50,10 @@ function formatMoney(amount: number) {
 
 function formatDate(value: string) {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Không rõ thời gian';
+
+  if (Number.isNaN(date.getTime())) {
+    return 'Không rõ thời gian';
+  }
 
   return new Intl.DateTimeFormat('vi-VN', {
     dateStyle: 'medium',
@@ -67,28 +70,23 @@ export default function OrdersPage() {
     let active = true;
 
     async function loadOrders() {
-      setLoading(true);
-      setError('');
-
       try {
         const response = await apiClient.get<ApiResponse<Order[]>>(
           '/orders/me',
         );
 
         if (!response.success || !Array.isArray(response.data)) {
-          throw new Error(response.message || 'Dữ liệu đơn hàng không hợp lệ.');
+          throw new Error('Dữ liệu đơn hàng không hợp lệ.');
         }
 
         if (active) {
           setOrders(response.data);
+          setError('');
         }
       } catch {
-        // Backend chưa triển khai: sử dụng mock để phát triển UI.
         if (active) {
           setOrders(MOCK_ORDERS);
-          setError(
-            'Không kết nối được API. Đang hiển thị dữ liệu mẫu.',
-          );
+          setError('Không kết nối được API. Đang hiển thị dữ liệu mẫu.');
         }
       } finally {
         if (active) setLoading(false);
@@ -103,23 +101,20 @@ export default function OrdersPage() {
   }, []);
 
   return (
-    <main className="mx-auto min-h-screen max-w-3xl space-y-5 px-4 py-6 pb-24">
-      <header className="space-y-1">
-        <Link href="/" className="text-sm text-gray-500 hover:text-gray-900">
-          ← Trang chủ
-        </Link>
-        <h1 className="text-2xl font-bold text-gray-900">
+    <main className="space-y-6 pb-24">
+      <header className="pt-2">
+        <h1 className="text-2xl font-black text-neutral-900">
           Lịch sử đơn hàng
         </h1>
-        <p className="text-sm text-gray-500">
-          Theo dõi các đơn hàng BrewLite của bạn.
+        <p className="mt-0.5 text-xs text-neutral-500">
+          Theo dõi tiến độ và các đơn đồ uống đã đặt
         </p>
       </header>
 
       {error && (
         <div
           role="status"
-          className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"
+          className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800"
         >
           {error}
         </div>
@@ -130,28 +125,35 @@ export default function OrdersPage() {
           {[1, 2, 3].map((item) => (
             <div
               key={item}
-              className="animate-pulse space-y-3 rounded-2xl border border-gray-200 p-4"
+              className="animate-pulse space-y-3 rounded-2xl border border-stone-200 p-4"
             >
-              <div className="h-4 w-32 rounded bg-gray-200" />
-              <div className="h-3 w-48 rounded bg-gray-100" />
-              <div className="h-5 w-28 rounded bg-gray-200" />
+              <div className="h-4 w-32 rounded bg-stone-200" />
+              <div className="h-3 w-48 rounded bg-stone-100" />
+              <div className="h-5 w-28 rounded bg-stone-200" />
             </div>
           ))}
         </div>
       ) : orders.length === 0 ? (
-        <section className="rounded-2xl border border-dashed border-gray-300 px-5 py-12 text-center">
-          <div className="text-4xl" aria-hidden="true">☕</div>
-          <h2 className="mt-3 text-lg font-semibold text-gray-900">
-            Bạn chưa có đơn hàng
+        <section className="flex min-h-[50vh] flex-col items-center justify-center rounded-2xl border border-dashed border-stone-200 bg-stone-50/60 p-8 text-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-3xl text-amber-900 shadow-inner">
+            📋
+          </div>
+
+          <h2 className="mt-4 text-lg font-bold text-neutral-800">
+            Chưa có đơn hàng nào
           </h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Hãy chọn món yêu thích và đặt đơn đầu tiên nhé.
+
+          <p className="mt-2 max-w-xs text-xs leading-relaxed text-neutral-500">
+            Bạn chưa đặt món nào tại BrewLite. Hãy khám phá thực đơn cà phê
+            thơm ngon và đặt ngay chỉ trong vài chạm nhé!
           </p>
+
           <Link
             href="/"
-            className="mt-5 inline-flex rounded-xl bg-amber-700 px-5 py-3 font-medium text-white hover:bg-amber-800"
+            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-amber-800 px-5 py-3 text-xs font-bold text-white shadow-sm transition hover:bg-amber-900 active:scale-95"
           >
-            Khám phá menu
+            <span>Khám phá thực đơn ngay</span>
+            <span aria-hidden="true">→</span>
           </Link>
         </section>
       ) : (
@@ -160,14 +162,14 @@ export default function OrdersPage() {
             <Link
               key={order.id}
               href={`/orders/${encodeURIComponent(order.id)}`}
-              className="block rounded-2xl border border-gray-200 bg-white p-4 transition hover:border-amber-400 hover:shadow-sm"
+              className="block rounded-2xl border border-stone-200 bg-white p-4 transition hover:border-amber-400 hover:shadow-sm"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="font-bold text-gray-900">
+                  <p className="font-bold text-neutral-900">
                     Đơn hàng {order.orderCode}
                   </p>
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="mt-1 text-xs text-neutral-500">
                     {formatDate(order.createdAt)}
                   </p>
                 </div>
@@ -177,11 +179,11 @@ export default function OrdersPage() {
                 </span>
               </div>
 
-              <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3">
-                <span className="text-sm text-gray-500">
+              <div className="mt-4 flex items-center justify-between border-t border-stone-100 pt-3">
+                <span className="text-sm text-neutral-500">
                   {order.items?.length ?? 0} loại món
                 </span>
-                <span className="font-bold text-gray-900">
+                <span className="font-bold text-neutral-900">
                   {formatMoney(order.totalAmount)}
                 </span>
               </div>

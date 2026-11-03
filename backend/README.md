@@ -103,6 +103,176 @@ Check out a few resources that may come in handy when working with NestJS:
 - To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
 - Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
 
+## API tạo đơn hàng - `POST /orders` (Task 6)
+
+Tạo đơn hàng trạng thái `PENDING` từ giỏ hàng (SRS FR-12). Chưa thanh toán, chưa trừ kho.
+
+### Chạy thử
+
+```bash
+docker compose up -d db          # ở thư mục gốc repo
+cd backend
+npm install
+npx prisma migrate deploy        # tạo bảng (gồm orders, order_items, users)
+npm run prisma:seed              # nạp menu mẫu
+npm run start:dev                # http://localhost:8080
+```
+
+Cần `backend/.env` với `DATABASE_URL` trỏ đúng cổng DB (xem `.env.example`).
+Lấy `productId` từ `GET /products` (id mẫu: `20000000-0000-4000-8000-000000000004` = Trà đào).
+
+### Request
+
+```http
+POST /orders
+Authorization: Bearer <JWT_TOKEN>
+Content-Type: application/json
+Idempotency-Key: 3f2b8c1e-5a7d-4e2f-9b61-0c1d2e3f4a5b
+
+{
+  "items": [
+    { "productId": "20000000-0000-4000-8000-000000000004", "size": "L",
+      "toppingIds": ["extra-peach", "jelly"], "quantity": 2 }
+  ],
+  "note": "ít đường"
+}
+```
+
+| Trường | Quy tắc |
+| :--- | :--- |
+| Header `Authorization` | `Bearer <JWT_TOKEN>` (nhận từ `POST /auth/login` hoặc `POST /auth/register`). |
+| `items` | Mảng, 1 đến 50 dòng. |
+| `items[].productId` | UUID của sản phẩm. |
+| `items[].size` | `S`, `M` hoặc `L`. |
+| `items[].toppingIds` | Tùy chọn. Không trùng, phải thuộc sản phẩm và còn phục vụ. |
+| `items[].quantity` | Số nguyên từ 1 đến 99. |
+| `note` | Tùy chọn, tối đa 200 ký tự. |
+| Header `Idempotency-Key` | Tùy chọn (1 đến 128 ký tự). Gửi lại cùng khóa thì trả lại đơn cũ (HTTP 200), không tạo đơn mới. Thiếu thì server tự sinh khóa. |
+
+**Không gửi tổng tiền hay đơn giá.** Backend tự tính từ giá trong DB (AC-12.3).
+Gửi thêm trường lạ như `total` hoặc `unitPrice` sẽ bị `400`.
+
+### Response `201 Created`
+
+```json
+{
+  "orderId": "441df135-c462-46c6-94ef-f4b3de09d92f",
+  "orderCode": "#1042",
+  "status": "PENDING",
+  "subtotal": "114000.00",
+  "discountAmount": "0.00",
+  "totalAmount": "114000.00",
+  "note": "ít đường",
+  "createdAt": "2026-10-27T08:50:39.079Z",
+  "items": [
+    { "productId": "...", "productName": "Trà đào", "size": "L", "quantity": 2,
+      "selectedToppings": [{ "id": "extra-peach", "name": "Thêm đào", "price": 8000 }],
+      "unitPrice": "57000.00", "subtotal": "114000.00" }
+  ]
+}
+```
+
+### Mã lỗi
+
+| HTTP | Khi nào |
+| :--- | :--- |
+| `400` | Dữ liệu sai (giỏ rỗng, `quantity` không hợp lệ, size sai, trường lạ), sản phẩm không tồn tại hoặc ngừng bán, topping không hợp lệ. |
+| `401` | Chưa đăng nhập hoặc JWT token không hợp lệ / hết hạn (`JwtAuthGuard`). |
+| `409` | Hết hàng (`code: OUT_OF_STOCK`, `details.outOfStock[]` liệt kê món thiếu). Tồn kho được cộng dồn theo sản phẩm giữa các dòng. Toàn bộ đơn bị hủy, không lưu đơn nào. |
+| `409` | `Idempotency-Key` đã thuộc người dùng khác. |
+
+### Lưu ý
+
+- **Xác thực người dùng:** Đã tích hợp `JwtAuthGuard` và `@CurrentUser()` từ Task 7. Controller tự động lấy `user.id` từ JWT token trong header `Authorization: Bearer <token>`.
+- **Voucher và `paymentMethod`** chưa nằm trong request (thuộc Task 8 và Task 10).
+- Kiểm tra: `npm test` (unit test cho tính tiền, tồn kho, idempotency, validate DTO).
+
+## API lịch sử đơn hàng - `GET /orders/me` và `GET /orders/:id` (Task 9 BE)
+
+Xem lại các đơn hàng của chính người dùng đang đăng nhập (SRS FR-15). Cả hai endpoint đều yêu cầu JWT
+(`JwtAuthGuard`) và **chỉ trả dữ liệu của chủ đơn**. `userId` luôn lấy từ token, không nhận từ query hay body.
+
+### Chạy thử
+
+Chạy server như mục `POST /orders` ở trên. Nếu Docker đang chạy sẵn container `brewlite-backend` (code cũ) thì dừng nó
+trước, nếu không cổng 8080 trả `404`:
+
+```bash
+docker compose stop backend frontend   # ở thư mục gốc repo
+cd backend
+npm run start:dev
+```
+
+1. Đăng ký rồi đăng nhập để lấy token:
+   ```http
+   POST /auth/register
+   { "email": "khachhang@brewlite.vn", "password": "MatKhau123", "fullName": "Khach Hang" }
+
+   POST /auth/login
+   { "email": "khachhang@brewlite.vn", "password": "MatKhau123" }
+   ```
+   Phản hồi của `/auth/login` có `accessToken`.
+2. Gắn vào mọi request bên dưới: `Authorization: Bearer <accessToken>` (Postman: tab Authorization, chọn Bearer Token).
+   Trên Swagger (`http://localhost:8080/swagger`) bấm **Authorize** và chỉ dán chuỗi token, không gõ chữ `Bearer`.
+3. Tạo vài đơn bằng `POST /orders` để có dữ liệu.
+
+### `GET /orders/me` - lịch sử đơn của tôi
+
+```http
+GET /orders/me
+Authorization: Bearer <JWT_TOKEN>
+```
+
+- Trả mảng đơn của user đang đăng nhập, **mới nhất lên đầu** (`createdAt` giảm dần, cùng thời điểm thì `orderCode` lớn hơn trước).
+- Chưa có đơn nào thì trả `200` với mảng rỗng `[]`, không phải lỗi.
+- Mỗi phần tử có cấu trúc giống phản hồi của `POST /orders` (xem bên trên): `orderId`, `orderCode`, `status`, `subtotal`,
+  `discountAmount`, `totalAmount`, `note`, `createdAt`, `items[]`.
+
+### `GET /orders/:id` - chi tiết một đơn
+
+```http
+GET /orders/441df135-c462-46c6-94ef-f4b3de09d92f
+Authorization: Bearer <JWT_TOKEN>
+```
+
+- `:id` là `orderId` (UUID) trả về từ `POST /orders` hoặc `GET /orders/me`.
+- Trả `200` với một đơn kèm `items[]` và `selectedToppings` của từng món. Giá và tên món là bản chụp lúc đặt,
+  không đổi khi menu thay đổi giá.
+
+```json
+{
+  "orderId": "441df135-c462-46c6-94ef-f4b3de09d92f",
+  "orderCode": "#1042",
+  "status": "PENDING",
+  "subtotal": "114000.00",
+  "discountAmount": "0.00",
+  "totalAmount": "114000.00",
+  "note": "ít đường",
+  "createdAt": "2026-10-27T08:50:39.079Z",
+  "items": [
+    { "productId": "20000000-0000-4000-8000-000000000004", "productName": "Trà đào", "size": "L", "quantity": 2,
+      "selectedToppings": [{ "id": "extra-peach", "name": "Thêm đào", "price": 8000 }],
+      "unitPrice": "57000.00", "subtotal": "114000.00" }
+  ]
+}
+```
+
+### Mã lỗi
+
+| HTTP | Endpoint | Khi nào |
+| :--- | :--- | :--- |
+| `400` | `GET /orders/:id` | `id` không phải UUID hợp lệ (ví dụ `/orders/abc`). |
+| `401` | cả hai | Không có token, token sai hoặc hết hạn. |
+| `404` | `GET /orders/:id` | Không có đơn này, **hoặc đơn thuộc người dùng khác**. Cố ý trả cùng một lỗi cho cả hai trường hợp để không lộ id nào tồn tại. |
+
+### Lưu ý
+
+- `GET /orders/me` được khai báo **trước** `GET /orders/:id` trong controller. Nếu đảo thứ tự, chữ `me` sẽ bị hiểu là một `id`.
+- Quyền sở hữu nằm ngay trong truy vấn (`where: { id, userId }`), không so sánh sau khi đã lấy dữ liệu.
+- `createdAt` là giờ UTC (đuôi `Z`). Việt Nam là UTC+7, ví dụ `08:50Z` là 15:50 giờ Việt Nam. Frontend cần đổi khi hiển thị.
+- Chưa có phân trang: `GET /orders/me` trả toàn bộ đơn của user.
+- Kiểm tra: `npm test` (unit test `findMyOrders` và `findOneForUser`: lọc theo `userId`, sắp xếp, 404, mảng rỗng).
+
 ## Support
 
 Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
