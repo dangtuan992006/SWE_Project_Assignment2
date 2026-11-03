@@ -1,122 +1,124 @@
-# Hướng dẫn triển khai hệ thống BrewLite (Task 3.2)
+# BrewLite deployment guide
 
-- **Dự án:** BrewLite — Ứng dụng đặt cà phê không dùng tiền mặt
-- **Môn học:** Công nghệ Phần mềm, Trường Đại học Sài Gòn
-- **Tài liệu thiết kế / sơ đồ:** [`Docs/diagrams/deployment.puml`](diagrams/deployment.puml) · [`Docs/diagrams/deployment.svg`](diagrams/deployment.svg)
+This document describes the production topology represented by the Vietnamese
+diagram [`diagrams/deployment.svg`](diagrams/deployment.svg) and the English
+diagram [`diagrams/deployment-en.svg`](diagrams/deployment-en.svg). The provider names are
+examples: the same separation works with Render, Railway, Fly.io or a VPS.
 
----
-
-## Sơ đồ triển khai môi trường Production
-
-![Sơ đồ triển khai Production](diagrams/deployment.svg)
-
-> **Ghi chú:** Các nhà cung cấp dịch vụ đám mây (Render, Railway, Fly.io, Vercel hoặc VPS) trong sơ đồ là ví dụ minh họa cho mô hình triển khai tách biệt giữa Web, API và Database.
-
----
-
-## 1. Cấu trúc liên kết Runtime (Runtime Topology)
+## 1. Runtime topology
 
 ```text
-Trình duyệt / PWA (Khách hàng)
-    │
-    │ HTTPS
-    ▼
-Dịch vụ Web Next.js / CDN
-    │
-    │ HTTPS REST (CORS allow-list)
-    ▼
-Dịch vụ API NestJS (Container :8080)
-    │                     \
-    │ TLS / Mạng nội bộ 5432\ HTTPS
-    ▼                       ▼
-PostgreSQL + Persistent Volume   Cổng thanh toán mô phỏng (Mock Payment)
+Browser/PWA
+    |
+    | HTTPS
+    v
+Next.js web service / CDN
+    |
+    | HTTPS REST (CORS allow-list)
+    v
+NestJS API container :8080
+    |                    \
+    | TLS/private 5432    \ HTTPS
+    v                      v
+PostgreSQL + volume       Mock Payment Gateway
 ```
 
-- **Dịch vụ Web (Next.js):** Cung cấp giao diện người dùng và tài nguyên tĩnh (static assets). Dịch vụ này tuyệt đối không được phép nhận hoặc lưu trữ thông tin kết nối cơ sở dữ liệu.
-- **Dịch vụ API (NestJS):** Chạy ứng dụng backend NestJS. Ứng dụng lắng nghe trên biến môi trường `PORT` (mặc định `:8080`); tầng cân bằng tải / reverse proxy công khai của nền tảng sẽ xử lý HTTPS và chuyển tiếp traffic tới cổng này.
-- **Cơ sở dữ liệu (PostgreSQL):** Cơ sở dữ liệu quan hệ được quản lý với bộ lưu trữ bền vững (Persistent Volume), cơ chế tự động sao lưu định kỳ và kết nối mạng nội bộ riêng tư (Private Network).
-- **Cổng thanh toán mô phỏng (Mock Payment):** Chỉ được gọi trực tiếp từ tầng Backend API qua HTTPS. Mã nguồn phía Frontend tuyệt đối không lưu trữ khóa bí mật thanh toán.
+- **Web service** serves the Next.js frontend and public static assets. It must
+  not receive database credentials.
+- **API service** runs the NestJS application. The application listens on
+  `PORT`, defaulting to `8080`; the platform's public HTTPS endpoint terminates
+  TLS and forwards traffic to that port.
+- **PostgreSQL** is a managed database with persistent storage, automated
+  backups and a private connection whenever the provider supports one.
+- **Payment gateway** is reached only by the API. Browser code must never
+  contain payment secrets.
 
----
+## 2. Environment boundaries
 
-## 2. Phân tách ranh giới các môi trường
+| Environment | Purpose | Data and secrets |
+| --- | --- | --- |
+| Local | Developer feedback and manual testing | `.env` files are untracked; services use localhost |
+| CI | Install, lint, test and build on every change | Use CI secret store only; do not connect to production DB |
+| Production | Public customer traffic | Provider-managed secrets, HTTPS, persistent DB and backups |
 
-| Môi trường | Mục đích sử dụng | Dữ liệu và Quản lý biến môi trường bí mật |
-| :--- | :--- | :--- |
-| **Local** | Môi trường máy cá nhân của lập trình viên, phục vụ viết mã và kiểm thử thủ công | Tệp `.env` không được đưa lên Git; các dịch vụ kết nối qua `localhost` |
-| **CI (Tích hợp liên tục)** | Cài đặt dependencies, chạy linter, kiểm thử tự động và kiểm tra build trên mỗi commit / PR | Chỉ sử dụng kho lưu trữ bí mật của hệ thống CI (GitHub Secrets); không kết nối đến DB Production |
-| **Production (Vận hành)** | Phục vụ lưu lượng truy cập thực tế của khách hàng | Secret được quản lý an toàn bởi nhà cung cấp đám mây, bắt buộc HTTPS, cơ sở dữ liệu bền vững và có sao lưu định kỳ |
-
-Tệp `backend/.env.example` trong repository là nguồn tham chiếu chuẩn cho các biến môi trường Backend:
+The repository's `backend/.env.example` is the source of truth for the current
+backend variables:
 
 ```dotenv
 PORT=8080
-DATABASE_URL=postgresql://user:password@localhost:5432/brewlite_db
-JWT_SECRET=super_secret_jwt_key_example
+DATABASE_URL=<postgres connection string>
+JWT_SECRET=<long random value>
 ```
 
-Frontend chỉ nhận các cấu hình công khai không nhạy cảm, ví dụ địa chỉ API endpoint:
+The frontend should receive only non-secret public configuration, such as the
+HTTPS API base URL (for example `NEXT_PUBLIC_API_URL`). Add a variable to the
+frontend environment only when the frontend code actually consumes it.
 
-```dotenv
-NEXT_PUBLIC_API_URL=https://api.brewlite.example.com
-```
+## 3. Production configuration
 
----
+### Web service
 
-## 3. Cấu hình triển khai Production
+1. Set the root directory to `frontend`.
+2. Install with `npm ci`.
+3. Build with `npm run build`.
+4. Start with `npm run start`.
+5. Set the production API base URL to the public HTTPS NestJS endpoint.
+6. Configure the platform domain and HTTPS certificate.
 
-### 3.1. Dịch vụ Web (Frontend - Next.js)
-1. Cấu hình thư mục gốc (Root Directory) trỏ về: `frontend`.
-2. Lệnh cài đặt dependencies: `npm ci`.
-3. Lệnh build ứng dụng: `npm run build`.
-4. Lệnh khởi chạy: `npm run start`.
-5. Thiết lập biến môi trường `NEXT_PUBLIC_API_URL` trỏ đến endpoint HTTPS công khai của NestJS API.
-6. Cấu hình tên miền và chứng chỉ HTTPS (SSL/TLS).
+### API service
 
-### 3.2. Dịch vụ API (Backend - NestJS)
-1. Cấu hình thư mục gốc (Root Directory) trỏ về: `backend`.
-2. Lệnh cài đặt dependencies: `npm ci`.
-3. Lệnh build ứng dụng: `npm run build`.
-4. Lệnh khởi chạy: `npm run start:prod`.
-5. Đặt biến môi trường `PORT` theo cổng do nhà cung cấp cấp phát (mặc định `8080`).
-6. Cấu hình an toàn các biến `DATABASE_URL` và `JWT_SECRET` trong bảng điều khiển bí mật của nền tảng (Secret Store).
-7. Thiết lập danh sách CORS cho phép (CORS allow-list) chính xác tên miền của Web Frontend.
-8. Cấu hình kiểm tra sức khỏe hệ thống (Health Check) tại endpoint `GET /health`.
+1. Set the root directory to `backend`.
+2. Install with `npm ci`.
+3. Build with `npm run build`.
+4. Start with `npm run start:prod`.
+5. Set `PORT` to the platform-provided port, normally `8080`.
+6. Set `DATABASE_URL` and `JWT_SECRET` in the provider secret store.
+7. Set CORS to the exact production web origin when CORS is enabled.
+8. Configure a health check at `GET /health` (or the application health route
+   exposed by the current API implementation).
 
-### 3.3. Cơ sở dữ liệu (PostgreSQL)
-- Khởi tạo PostgreSQL với Persistent Volume để đảm bảo dữ liệu không bị mất khi container khởi động lại.
-- Giới hạn quyền truy cập chỉ cho phép các kết nối đến từ Backend API hoặc mạng nội bộ (Private Network).
-- Bắt buộc mã hóa đường truyền TLS nếu cơ sở dữ liệu nằm ngoài mạng nội bộ của nhà cung cấp.
-- Thực hiện chạy Database Migration như một bước phát hành độc lập trước khi kích hoạt phiên bản code mới.
-- Thiết lập sao lưu định kỳ (Automated Backup) và thường xuyên kiểm tra tính khả thi của việc phục hồi dữ liệu.
+### Database
 
----
+- Provision PostgreSQL with persistent storage; do not run PostgreSQL as an
+  ephemeral application container.
+- Restrict inbound access to the API service or private network.
+- Require TLS when the provider exposes PostgreSQL outside its private network.
+- Run schema migrations as an explicit release step before serving code that
+  depends on the new schema.
+- Enable automated backups and periodically verify a restore.
 
-## 4. Mạng và Bảo mật (Networking & Security)
+## 4. Networking and security
 
-- Toàn bộ lưu lượng Internet công cộng đều phải sử dụng giao thức **HTTPS**. Tự động chuyển hướng hoặc từ chối kết nối HTTP thông thường tại tầng Gateway/Edge.
-- Trình duyệt chỉ giao tiếp với Web Service và API Service qua HTTPS; tuyệt đối không mở cổng cơ sở dữ liệu ra Internet công cộng.
-- Chỉ cho phép địa chỉ IP của API Service truy cập vào cổng `5432` của PostgreSQL.
-- Bảo mật nghiêm ngặt `JWT_SECRET`, `DATABASE_URL` và các khóa thanh toán; không để lộ trong mã nguồn, gói bundle frontend, file ảnh Docker hay log hệ thống.
-- Thiết lập CORS chặt chẽ; không dùng wildcard (`*`) cho các yêu cầu có truyền cookie hoặc token xác thực.
-- Tự động ẩn (redact) các trường nhạy cảm trong log (Authorization headers, token, mật khẩu, database URL).
+- Public traffic is HTTPS only. Redirect or reject plain HTTP at the edge.
+- The browser talks to the web service and API using HTTPS; the database is
+  never browser-accessible.
+- Allow only the API service to reach PostgreSQL on port `5432`.
+- Keep `JWT_SECRET`, `DATABASE_URL` and payment credentials out of source,
+  frontend bundles, logs and image files.
+- Use separate credentials and databases for local, CI and production.
+- Set a restrictive CORS allow-list; do not use `*` with credentialed requests.
+- Redact authorization headers, cookies, tokens and database URLs from logs.
 
----
+## 5. Health checks, logs and operations
 
-## 5. Vận hành, Giám sát và Kiểm tra sức khỏe
+- The platform should restart the API when the process exits unexpectedly.
+- A health check should verify that the process is accepting HTTP traffic and,
+  where appropriate, that the database connection is usable.
+- Emit structured logs to stdout/stderr so the hosting provider can collect
+  them. Include request correlation IDs when available.
+- Monitor HTTP error rate, latency, restart count, database connection errors
+  and payment failures.
+- Keep deployment logs separate from application logs and retain them according
+  to the team's operational policy.
 
-- Nền tảng hosting phải có cơ chế tự động khởi động lại container (Auto-restart) khi tiến trình API gặp lỗi đột ngột.
-- Endpoint Health Check xác nhận API đang phản hồi HTTP bình thường và kết nối Database vẫn hoạt động ổn định.
-- Xuất log có cấu trúc chuẩn ra `stdout`/`stderr` để hệ thống thu thập log của nhà cung cấp tự động lưu trữ; bổ sung Request Correlation ID để tiện theo dõi luồng request.
-- Thiết lập giám sát các chỉ số vận hành quan trọng: tỷ lệ lỗi HTTP 5xx, độ trễ API (latency), số lần restart, lỗi kết nối DB và các giao dịch thanh toán thất bại.
+## 6. Deployment flow
 
----
-
-## 6. Quy trình phát hành (Deployment Release Flow)
-
-1. **Kiểm tra tự động trên CI:** Chạy toàn bộ linter (`oxlint`), định dạng (`prettier`), unit test và build thử nghiệm của cả Frontend và Backend.
-2. **Áp dụng Migration:** Kiểm tra và chạy các tệp migration cập nhật cơ sở dữ liệu trong bước release được kiểm soát.
-3. **Triển khai Backend API:** Triển khai container API mới, kiểm tra endpoint `/health` và theo dõi log khởi động.
-4. **Triển khai Web Frontend:** Triển khai Frontend Next.js trỏ đến endpoint API mới đã hoạt động ổn định.
-5. **Kiểm thử khói (Smoke Test):** Kiểm tra nhanh các luồng nghiệp vụ cốt lõi: đăng nhập, xem danh sách menu, thêm món vào giỏ hàng, đặt hàng và xem lịch sử đơn.
-6. **Phương án dự phòng (Rollback):** Nếu phiên bản mới gặp sự cố nghiêm trọng, nhanh chóng rollback về image/build ổn định trước đó; việc khôi phục cơ sở dữ liệu chỉ thực hiện sau khi đã đánh giá độ an toàn của migration.
+1. CI runs frontend/backend lint, tests and production builds.
+2. The database migration is reviewed and applied in a controlled release
+   step.
+3. Deploy the API, then verify its health endpoint and logs.
+4. Deploy the frontend with the API's stable HTTPS URL.
+5. Smoke-test login, menu browsing, checkout and order tracking.
+6. If the release fails, roll back the application image/build; restore the
+   database only after assessing whether a backward-compatible migration can
+   be reversed safely.
