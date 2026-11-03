@@ -4,10 +4,18 @@ on:
   push:
     branches:
       - main
+      - TV1
+      - TV2
+      - TV3
+      - TV4
+      - TV5
+      - TV6
+      - TV7
       - "feature/*"
   pull_request:
     branches:
       - main
+      - TV1
 
 jobs:
   backend-ci:
@@ -37,7 +45,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -71,7 +79,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
           node-version: 24

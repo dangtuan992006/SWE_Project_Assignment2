@@ -21,7 +21,11 @@ type CreateOrderResponse = {
 };
 
 type PaymentResponse = {
-  status: 'SUCCESS' | 'FAILED';
+  status?: string;
+  payment?: {
+    status?: string;
+    transactionCode?: string | null;
+  };
 };
 
 type QuoteResponse = {
@@ -117,7 +121,11 @@ export default function CheckoutModal({
         { orderId: order.orderId, paymentMethod },
         { headers: { 'Idempotency-Key': createIdempotencyKey() } },
       );
-      if (payment.status !== 'SUCCESS') {
+      const isSuccess =
+        payment?.status === 'SUCCESS' ||
+        payment?.status === 'PAID' ||
+        payment?.payment?.status === 'SUCCESS';
+      if (!isSuccess) {
         throw new Error('Thanh toán thất bại. Giỏ hàng được giữ nguyên để thử lại.');
       }
 
