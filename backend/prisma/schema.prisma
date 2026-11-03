@@ -19,70 +19,69 @@ model Category {
   @@map("categories")
 }
 
-// 2. Model Sản phẩm (Đồ uống) - Tuân thủ class-domain.md
+// 2. Model Sản phẩm (Đồ uống)
 model Product {
-  id             String    @id @default(uuid())
-  name           String
-  description    String?
-  imageUrl       String?
-  
-  // Giá theo 3 kích thước (S/M/L) - M là mặc định
-  priceS         Decimal   @db.Decimal(10, 2)
-  priceM         Decimal   @db.Decimal(10, 2)
-  priceL         Decimal   @db.Decimal(10, 2)
+  id          String  @id @default(uuid())
+  name        String
+  description String?
+  imageUrl    String?
 
-  // Danh sách topping hợp lệ lưu dạng JSON: [{ id, name, price, isAvailable }]
-  toppingOptions Json      @default("[]")
+  priceS Decimal @db.Decimal(10, 2)
+  priceM Decimal @db.Decimal(10, 2)
+  priceL Decimal @db.Decimal(10, 2)
 
-  // Tồn kho & trạng thái
-  stock          Int       @default(0)
-  isAvailable    Boolean   @default(true)
-  
-  // Dùng cho Optimistic Locking sau này
-  version        Int       @default(0)
+  toppingOptions Json @default("[]")
 
-  // Khóa ngoại liên kết Danh mục
-  categoryId     String
-  category       Category  @relation(fields: [categoryId], references: [id])
+  stock       Int     @default(0)
+  isAvailable Boolean @default(true)
 
-  // Quan hệ ngược: các dòng đơn hàng tham chiếu tới sản phẩm này
-  orderItems     OrderItem[]
+  version Int @default(0)
 
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  orderItems OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("products")
 }
 
-// 3. Phân quyền người dùng (Role) - Tuân thủ class-domain.md & brewlite.ts (Task 7)
+// 3. Phân quyền
 enum Role {
   CUSTOMER
   BARISTA
   ADMIN
 }
 
-// 4. Model Người dùng (User / Customer) - Task 7
+// 4. Model Người dùng
 model User {
-  id            String   @id @default(uuid())
-  email         String   @unique
-  passwordHash  String   @map("password_hash")
-  fullName      String?  @map("full_name")
-  role          Role     @default(CUSTOMER)
-  loyaltyPoints Int      @default(0) @map("loyalty_points")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id            String  @id @default(uuid())
+  email         String  @unique
+  passwordHash  String  @map("password_hash")
+  fullName      String? @map("full_name")
+  role          Role    @default(CUSTOMER)
+  loyaltyPoints Int     @default(0) @map("loyalty_points")
+
+  // Quan hệ: Một user có thể có nhiều đơn hàng và nhiều giao dịch điểm thưởng
+  orders              Order[]
+  loyaltyTransactions LoyaltyTransaction[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("users")
 }
 
-// 5. Kích thước đồ uống - Task 6
+// 5. Kích thước
 enum Size {
   S
   M
   L
 }
 
-// 6. Trạng thái đơn hàng (State Machine - ADR-003) - Task 6
+// 6. Trạng thái đơn hàng
 enum OrderStatus {
   PENDING
   PAID
@@ -93,48 +92,47 @@ enum OrderStatus {
   CANCELLED
 }
 
-// 7. Đơn hàng - Tuân thủ class-domain.md (Order) - Task 6
+// 7. Đơn hàng
 model Order {
-  id             String      @id @default(uuid())
-  // Mã đơn hiển thị cho khách: "#<orderNumber>" (ví dụ #1042)
-  orderNumber    Int         @unique @default(autoincrement())
+  id          String @id @default(uuid())
+  orderNumber Int    @unique @default(autoincrement()) @map("order_number")
 
-  userId         String
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
 
   status         OrderStatus @default(PENDING)
   subtotal       Decimal     @db.Decimal(10, 2)
-  discountAmount Decimal     @default(0) @db.Decimal(10, 2)
-  totalAmount    Decimal     @db.Decimal(10, 2)
-  voucherCode    String?
+  discountAmount Decimal     @default(0) @map("discount_amount") @db.Decimal(10, 2)
+  totalAmount    Decimal     @map("total_amount") @db.Decimal(10, 2)
+  voucherCode    String?     @map("voucher_code")
   note           String?
 
-  // Idempotency-Key của lượt đặt hàng: gửi lại cùng khóa thì trả lại đơn cũ
-  checkoutKey    String      @unique
+  checkoutKey String @unique @map("checkout_key")
 
-  items          OrderItem[]
-  payments       Payment[]
+  items               OrderItem[]
+  payments            Payment[]
+  loyaltyTransactions LoyaltyTransaction[]
 
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([userId, createdAt])
   @@map("orders")
 }
 
-// 8. Dòng món trong đơn - Tuân thủ class-domain.md (OrderDetail) - Task 6
-// Lưu bản chụp (snapshot) tên, topping, giá tại thời điểm đặt.
+// 8. Dòng món trong đơn
 model OrderItem {
-  id               String  @id @default(uuid())
-  orderId          String
-  order            Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId        String
-  product          Product @relation(fields: [productId], references: [id])
+  id        String  @id @default(uuid())
+  orderId   String  @map("order_id")
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String  @map("product_id")
+  product   Product @relation(fields: [productId], references: [id])
 
-  productName      String
+  productName      String  @map("product_name")
   size             Size
   quantity         Int
-  selectedToppings Json    @default("[]")
-  unitPrice        Decimal @db.Decimal(10, 2)
+  selectedToppings Json    @default("[]") @map("selected_toppings")
+  unitPrice        Decimal @map("unit_price") @db.Decimal(10, 2)
   subtotal         Decimal @db.Decimal(10, 2)
 
   @@index([orderId])
@@ -177,10 +175,61 @@ model Payment {
   errorCode       String?       @map("error_code")
 
   createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
   completedAt     DateTime?     @map("completed_at")
   refundedAt      DateTime?     @map("refunded_at")
 
   @@unique([orderId, attemptNumber])
   @@index([orderId])
   @@map("payments")
+}
+
+// 12. Model Khuyến mãi (Voucher) - Tuân thủ class-domain.md (Task 7 & Task 10)
+enum DiscountType {
+  FIXED_AMOUNT
+  PERCENTAGE
+}
+
+model Voucher {
+  id            String       @id @default(uuid())
+  code          String       @unique
+  discountType  DiscountType @map("discount_type")
+  discountValue Decimal      @map("discount_value") @db.Decimal(10, 2)
+
+  minOrderValue Decimal?     @map("min_order_value") @db.Decimal(10, 2)
+  maxDiscount   Decimal?     @map("max_discount") @db.Decimal(10, 2)
+  usageLimit    Int?         @map("usage_limit")
+  usedCount     Int          @default(0) @map("used_count")
+  startDate     DateTime?    @map("start_date")
+  endDate       DateTime?    @map("end_date")
+
+  isActive      Boolean      @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("vouchers")
+}
+
+// 13. Model Lịch sử điểm thưởng (LoyaltyTransaction) - Task 7
+enum TransactionType {
+  EARN
+  REDEEM
+}
+
+model LoyaltyTransaction {
+  id String @id @default(uuid())
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  orderId String? @map("order_id")
+  order   Order?  @relation(fields: [orderId], references: [id])
+
+  points Int
+  type   TransactionType
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("loyalty_transactions")
 }
