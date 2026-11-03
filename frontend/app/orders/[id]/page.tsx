@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { apiClient } from '@/utils/apiClient';
 import type { ApiResponse, Order, OrderStatus } from '@/types/brewlite';
 
@@ -91,9 +91,9 @@ function formatDate(value: string) {
   }).format(date);
 }
 
-export default function OrderDetailPage() {
+function OrderDetailContent() {
   const params = useParams<{ id: string }>();
-  const orderId = decodeURIComponent(params.id);
+  const orderId = decodeURIComponent(params.id)
 
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
@@ -404,5 +404,13 @@ export default function OrderDetailPage() {
         Quay lại lịch sử đơn hàng
       </Link>
     </main>
+  );
+}
+
+export default function OrderDetailPage() {
+  return (
+    <Suspense fallback={<div>Đang tải đơn hàng...</div>}>
+      <OrderDetailContent />
+    </Suspense>
   );
 }
