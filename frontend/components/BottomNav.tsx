@@ -13,15 +13,26 @@
  *   3. Lịch sử đơn hàng (Orders)
  *   4. Tài khoản (Profile)
  * - Tự động đổi màu làm nổi bật tab đang xem dựa trên đường dẫn hiện tại (usePathname).
+ * - Cập nhật số lượng giỏ hàng qua Zustand store.
  */
 
+import React, { useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCartStore } from '@/stores/cartStore';
 
+const emptySubscribe = () => () => {};
+
 export default function BottomNav() {
   const pathname = usePathname();
+  const mounted = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false,
+  );
   const cartCount = useCartStore((state) => state.getTotalQuantity());
+
+  const displayCount = mounted ? cartCount : 0;
 
   // Danh sách các tab điều hướng chuẩn
   const navTabs = [
@@ -53,7 +64,7 @@ export default function BottomNav() {
     {
       name: 'Giỏ hàng',
       href: '/cart',
-      badge: cartCount,
+      badge: displayCount,
       icon: (active: boolean) => (
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -93,7 +104,7 @@ export default function BottomNav() {
     },
     {
       name: 'Tài khoản',
-      href: '/profile',
+      href: '/login',
       icon: (active: boolean) => (
         <svg
           xmlns="http://www.w3.org/2000/svg"

@@ -9,14 +9,24 @@
  * - Cố định ở đầu màn hình (Sticky Header) với phong cách Mobile-first.
  * - Hiển thị Logo thương hiệu BrewLite kèm biểu tượng tách cà phê.
  * - Hiển thị nút Giỏ hàng kèm Cart Badge báo số lượng sản phẩm (FR-11).
- * - Tự động cập nhật số lượng khi giỏ hàng có sự thay đổi.
+ * - Tự động cập nhật số lượng khi giỏ hàng có sự thay đổi thông qua Zustand store.
  */
 
+import React, { useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useCartStore } from '@/stores/cartStore';
 
+const emptySubscribe = () => () => {};
+
 export default function Header() {
+  const mounted = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false,
+  );
   const cartCount = useCartStore((state) => state.getTotalQuantity());
+
+  const displayCount = mounted ? cartCount : 0;
 
   return (
     <header className="sticky top-0 z-40 bg-amber-900 text-white shadow-md">
@@ -78,9 +88,9 @@ export default function Header() {
           </svg>
 
           {/* BADGE SỐ LƯỢNG MÓN (CHỈ HIỂN THỊ KHI CÓ ÍT NHẤT 1 MÓN - AC-11.1) */}
-          {cartCount > 0 && (
+          {displayCount > 0 && (
             <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold text-white shadow-sm animate-pulse">
-              {cartCount > 99 ? '99+' : cartCount}
+              {displayCount > 99 ? '99+' : displayCount}
             </span>
           )}
         </Link>

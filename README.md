@@ -195,4 +195,5 @@ Một User Story / Task được coi là hoàn thành khi:
 - [x] **Cấu trúc Monorepo:** Tách biệt `frontend/`, `backend/`, `Docs/`.
 - [ ] **Mã nguồn MVP Sprint 1:** Triển khai API Menu và giao diện Web (Task 4.3).
 - [ ] **Tự động hóa CI/CD:** Cấu hình GitHub Actions pipeline (Task 4.4).
+# - [x] **Tự động hóa CI/CD:** Cấu hình GitHub Actions pipeline (Task 7).
 - [ ] **Triển khai Production:** Triển khai thực tế trên Cloud PaaS (Task 5).

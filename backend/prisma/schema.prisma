@@ -1,0 +1,224 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 1. Model Danh mục
+model Category {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  products    Product[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("categories")
+}
+
+// 2. Model Sản phẩm (Đồ uống)
+model Product {
+  id          String  @id @default(uuid())
+  name        String
+  description String?
+  imageUrl    String?
+
+  priceS Decimal @db.Decimal(10, 2)
+  priceM Decimal @db.Decimal(10, 2)
+  priceL Decimal @db.Decimal(10, 2)
+
+  toppingOptions Json @default("[]")
+
+  stock       Int     @default(0)
+  isAvailable Boolean @default(true)
+
+  version Int @default(0)
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  orderItems OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("products")
+}
+
+// 3. Phân quyền
+enum Role {
+  CUSTOMER
+  BARISTA
+  ADMIN
+}
+
+// 4. Model Người dùng
+model User {
+  id            String  @id @default(uuid())
+  email         String  @unique
+  passwordHash  String  @map("password_hash")
+  fullName      String? @map("full_name")
+  role          Role    @default(CUSTOMER)
+  loyaltyPoints Int     @default(0) @map("loyalty_points")
+
+  // Quan hệ: Một user có thể có nhiều đơn hàng và nhiều giao dịch điểm thưởng
+  orders              Order[]
+  loyaltyTransactions LoyaltyTransaction[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+// 5. Kích thước
+enum Size {
+  S
+  M
+  L
+}
+
+// 6. Trạng thái đơn hàng
+enum OrderStatus {
+  PENDING
+  PAID
+  PREPARING
+  READY
+  COMPLETED
+  PAYMENT_FAILED
+  CANCELLED
+}
+
+// 7. Đơn hàng
+model Order {
+  id          String @id @default(uuid())
+  orderNumber Int    @unique @default(autoincrement()) @map("order_number")
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  status         OrderStatus @default(PENDING)
+  subtotal       Decimal     @db.Decimal(10, 2)
+  discountAmount Decimal     @default(0) @map("discount_amount") @db.Decimal(10, 2)
+  totalAmount    Decimal     @map("total_amount") @db.Decimal(10, 2)
+  voucherCode    String?     @map("voucher_code")
+  note           String?
+
+  checkoutKey String @unique @map("checkout_key")
+
+  items               OrderItem[]
+  payments            Payment[] // Chuyển từ Payment? sang Payment[]
+  loyaltyTransactions LoyaltyTransaction[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, createdAt])
+  @@map("orders")
+}
+
+// 8. Dòng món trong đơn
+model OrderItem {
+  id        String  @id @default(uuid())
+  orderId   String  @map("order_id")
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String  @map("product_id")
+  product   Product @relation(fields: [productId], references: [id])
+
+  productName      String  @map("product_name")
+  size             Size
+  quantity         Int
+  selectedToppings Json    @default("[]") @map("selected_toppings")
+  unitPrice        Decimal @map("unit_price") @db.Decimal(10, 2)
+  subtotal         Decimal @db.Decimal(10, 2)
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+// ==========================================
+// CÁC THỰC THỂ MỚI BỔ SUNG CHO TASK 7 & 10
+// ==========================================
+
+// 9. Model Thanh toán (Payment)
+enum PaymentMethod {
+  E_WALLET
+  BANK_CARD
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  orderId       String        @map("order_id") // Đã bỏ @unique
+  order         Order         @relation(fields: [orderId], references: [id])
+  attemptNumber Int           @default(1) @map("attempt_number")
+  paymentMethod PaymentMethod @map("payment_method")
+  status        PaymentStatus @default(PENDING)
+  amount        Decimal       @db.Decimal(10, 2)
+
+  idempotencyKey String @unique @map("idempotency_key")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([orderId, attemptNumber]) // Khóa duy nhất kép
+  @@map("payments")
+}
+
+// 10. Model Khuyến mãi (Voucher)
+enum DiscountType { // Đổi tên từ VoucherType
+  FIXED_AMOUNT
+  PERCENTAGE
+}
+
+model Voucher {
+  id            String       @id @default(uuid())
+  code          String       @unique
+  discountType  DiscountType @map("discount_type")
+  discountValue Decimal      @map("discount_value") @db.Decimal(10, 2)
+  
+  minOrderValue Decimal?     @map("min_order_value") @db.Decimal(10, 2)
+  maxDiscount   Decimal?     @map("max_discount") @db.Decimal(10, 2)
+  usageLimit    Int?         @map("usage_limit")
+  usedCount     Int          @default(0) @map("used_count")
+  startDate     DateTime?    @map("start_date")
+  endDate       DateTime?    @map("end_date")
+
+  isActive      Boolean      @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("vouchers")
+}
+
+// 11. Model Lịch sử điểm thưởng (LoyaltyTransaction)
+enum TransactionType {
+  EARN
+  REDEEM
+}
+
+model LoyaltyTransaction {
+  id String @id @default(uuid())
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  orderId String? @map("order_id")
+  order   Order?  @relation(fields: [orderId], references: [id])
+
+  points Int
+  type   TransactionType
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("loyalty_transactions")
+}
