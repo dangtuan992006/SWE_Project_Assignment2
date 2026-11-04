@@ -4,7 +4,31 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState, Suspense } from "react";
 import { apiClient } from "@/utils/apiClient";
-import type { ApiResponse, Order, OrderStatus } from "@/types/brewlite";
+import type { Order, OrderStatus } from "@/types/brewlite";
+
+interface RawOrderItem {
+  productId: string;
+  productName: string;
+  size: Order["items"][number]["size"];
+  quantity: number;
+  selectedToppings?: Order["items"][number]["selectedToppings"];
+  unitPrice: number | string;
+  subtotal: number | string;
+}
+
+interface RawOrderResponse {
+  id?: string;
+  orderId?: string;
+  orderCode: string;
+  userId: string;
+  status: OrderStatus;
+  subtotal: number | string;
+  discountAmount?: number | string;
+  totalAmount: number | string;
+  items?: RawOrderItem[];
+  createdAt: string;
+  note?: string;
+}
 
 const MOCK_ORDERS: Order[] = [
   {
@@ -117,16 +141,40 @@ function OrderDetailContent() {
       }
 
       try {
-        const response = await apiClient.get<ApiResponse<Order>>(
-          `/orders/${encodeURIComponent(orderId)}`,
-        );
+        const response = await apiClient.get<
+          RawOrderResponse | { data: RawOrderResponse }
+        >(`/orders/${encodeURIComponent(orderId)}`);
 
-        if (!response.success || !response.data) {
-          throw new Error(response.message || "Không tải được đơn hàng.");
+        const rawOrder =
+          response &&
+          typeof response === "object" &&
+          "data" in response &&
+          response.data
+            ? response.data
+            : (response as RawOrderResponse);
+
+        if (!rawOrder) {
+          throw new Error("Không tải được đơn hàng.");
         }
 
+        const normalizedOrder: Order = {
+          ...rawOrder,
+          id: rawOrder.id || rawOrder.orderId || "",
+          subtotal: Number(rawOrder.subtotal || 0),
+          discountAmount: Number(rawOrder.discountAmount || 0),
+          totalAmount: Number(rawOrder.totalAmount || 0),
+          items: Array.isArray(rawOrder.items)
+            ? rawOrder.items.map((item) => ({
+                ...item,
+                selectedToppings: item.selectedToppings || [],
+                unitPrice: Number(item.unitPrice || 0),
+                subtotal: Number(item.subtotal || 0),
+              }))
+            : [],
+        };
+
         if (active) {
-          setOrder(response.data);
+          setOrder(normalizedOrder);
         }
       } catch {
         // Chỉ dùng dữ liệu mẫu cho những ID mẫu đã định nghĩa.

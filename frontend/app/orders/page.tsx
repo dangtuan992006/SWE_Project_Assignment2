@@ -1,17 +1,17 @@
+"use client";
 
-'use client';
-
-import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { apiClient } from '@/utils/apiClient';
-import type { ApiResponse, Order, OrderStatus } from '@/types/brewlite';
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { apiClient } from "@/utils/apiClient";
+import { authStorage } from "@/utils/authStorage";
+import type { Order, OrderStatus } from "@/types/brewlite";
 
 const MOCK_ORDERS: Order[] = [
   {
-    id: 'mock-order-1042',
-    orderCode: '#1042',
-    userId: 'mock-user',
-    status: 'PAID',
+    id: "mock-order-1042",
+    orderCode: "#1042",
+    userId: "mock-user",
+    status: "PAID",
     subtotal: 89000,
     discountAmount: 0,
     totalAmount: 89000,
@@ -19,10 +19,10 @@ const MOCK_ORDERS: Order[] = [
     createdAt: new Date().toISOString(),
   },
   {
-    id: 'mock-order-1041',
-    orderCode: '#1041',
-    userId: 'mock-user',
-    status: 'READY',
+    id: "mock-order-1041",
+    orderCode: "#1041",
+    userId: "mock-user",
+    status: "READY",
     subtotal: 65000,
     discountAmount: 5000,
     totalAmount: 60000,
@@ -32,19 +32,19 @@ const MOCK_ORDERS: Order[] = [
 ];
 
 const STATUS_LABEL: Record<OrderStatus, string> = {
-  PENDING: 'Chờ thanh toán',
-  PAID: 'Đã thanh toán',
-  PREPARING: 'Đang pha chế',
-  READY: 'Sẵn sàng nhận nước',
-  COMPLETED: 'Đã hoàn thành',
-  PAYMENT_FAILED: 'Thanh toán thất bại',
-  CANCELLED: 'Đã hủy',
+  PENDING: "Chờ thanh toán",
+  PAID: "Đã thanh toán",
+  PREPARING: "Đang pha chế",
+  READY: "Sẵn sàng nhận nước",
+  COMPLETED: "Đã hoàn thành",
+  PAYMENT_FAILED: "Thanh toán thất bại",
+  CANCELLED: "Đã hủy",
 };
 
 function formatMoney(amount: number) {
-  return new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: 'VND',
+  return new Intl.NumberFormat("vi-VN", {
+    style: "currency",
+    currency: "VND",
   }).format(amount);
 }
 
@@ -52,41 +52,93 @@ function formatDate(value: string) {
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
-    return 'Không rõ thời gian';
+    return "Không rõ thời gian";
   }
 
-  return new Intl.DateTimeFormat('vi-VN', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
+  return new Intl.DateTimeFormat("vi-VN", {
+    dateStyle: "medium",
+    timeStyle: "short",
   }).format(date);
+}
+
+interface RawOrder {
+  id?: string;
+  orderId?: string;
+  orderCode: string;
+  userId: string;
+  status: OrderStatus;
+  subtotal: number | string;
+  discountAmount?: number | string;
+  totalAmount: number | string;
+  items?: Order["items"];
+  createdAt: string;
 }
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   useEffect(() => {
     let active = true;
 
     async function loadOrders() {
-      try {
-        const response = await apiClient.get<ApiResponse<Order[]>>(
-          '/orders/me',
-        );
+      setLoading(true);
 
-        if (!response.success || !Array.isArray(response.data)) {
-          throw new Error('Dữ liệu đơn hàng không hợp lệ.');
-        }
-
-        if (active) {
-          setOrders(response.data);
-          setError('');
-        }
-      } catch {
+      const token = authStorage.getToken();
+      if (!token) {
         if (active) {
           setOrders(MOCK_ORDERS);
-          setError('Không kết nối được API. Đang hiển thị dữ liệu mẫu.');
+          setError(
+            "Vui lòng đăng nhập để xem lịch sử đơn hàng của bạn. Đang hiển thị dữ liệu mẫu.",
+          );
+          setLoading(false);
+        }
+        return;
+      }
+
+      try {
+        const response = await apiClient.get<RawOrder[] | { data: RawOrder[] }>(
+          "/orders/me",
+        );
+
+        // Chuẩn hóa dữ liệu: chấp nhận cả mảng trực tiếp Order[] hoặc bọc trong { data: Order[] }
+        const rawList = Array.isArray(response)
+          ? response
+          : response && Array.isArray(response.data)
+            ? response.data
+            : null;
+
+        if (!rawList) {
+          throw new Error("Dữ liệu đơn hàng không hợp lệ.");
+        }
+
+        const normalizedOrders: Order[] = rawList.map((item) => ({
+          ...item,
+          id: item.id || item.orderId || "",
+          subtotal: Number(item.subtotal || 0),
+          discountAmount: Number(item.discountAmount || 0),
+          totalAmount: Number(item.totalAmount || 0),
+          items: Array.isArray(item.items) ? item.items : [],
+        }));
+
+        if (active) {
+          setOrders(normalizedOrders);
+          setError("");
+        }
+      } catch (err: unknown) {
+        if (active) {
+          setOrders(MOCK_ORDERS);
+          const msg = err instanceof Error ? err.message : "";
+          if (msg.includes("đăng nhập") || msg.includes("401")) {
+            setError(
+              "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại để xem đơn hàng.",
+            );
+          } else {
+            setError(
+              "Không thể tải lịch sử đơn hàng từ máy chủ. Đang hiển thị dữ liệu mẫu.",
+            );
+          }
         }
       } finally {
         if (active) setLoading(false);
@@ -114,9 +166,17 @@ export default function OrdersPage() {
       {error && (
         <div
           role="status"
-          className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800"
+          className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800"
         >
-          {error}
+          <span>{error}</span>
+          {error.includes("đăng nhập") && (
+            <Link
+              href="/login?redirect=/orders"
+              className="inline-flex items-center rounded-lg bg-amber-800 px-3 py-1 font-bold text-white transition hover:bg-amber-900 active:scale-95"
+            >
+              Đăng nhập ngay →
+            </Link>
+          )}
         </div>
       )}
 
@@ -144,8 +204,8 @@ export default function OrdersPage() {
           </h2>
 
           <p className="mt-2 max-w-xs text-xs leading-relaxed text-neutral-500">
-            Bạn chưa đặt món nào tại BrewLite. Hãy khám phá thực đơn cà phê
-            thơm ngon và đặt ngay chỉ trong vài chạm nhé!
+            Bạn chưa đặt món nào tại BrewLite. Hãy khám phá thực đơn cà phê thơm
+            ngon và đặt ngay chỉ trong vài chạm nhé!
           </p>
 
           <Link
