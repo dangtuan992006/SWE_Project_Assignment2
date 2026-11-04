@@ -167,9 +167,6 @@ export class PromotionsService {
           orderId: orderId ?? null,
           points: pointsToAdd,
           type: 'EARN',
-          description: orderId
-            ? `Tích điểm thưởng từ đơn hàng ${orderId}`
-            : 'Tích điểm thưởng thành viên',
         },
       });
 

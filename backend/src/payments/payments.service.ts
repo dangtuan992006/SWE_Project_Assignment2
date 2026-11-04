@@ -14,6 +14,7 @@ import {
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { PromotionsService } from '../promotions/promotions.service';
 import { assertOrderTransition } from '../orders/order-state-machine';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 
@@ -36,7 +37,10 @@ export interface PaymentExecutionResult {
 
 @Injectable()
 export class PaymentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly promotionsService?: PromotionsService,
+  ) {}
 
   /**
    * Xử lý thanh toán đơn hàng (Task 8 + Task 10.2 & 10.3)
@@ -293,6 +297,20 @@ export class PaymentsService {
 
       return { order: updatedOrder, payment: paymentRecord };
     });
+
+    // 5. Tích lũy điểm thưởng Loyalty sau khi đơn hàng PAID thành công (Task 10.4 & AC-13.2)
+    if (this.promotionsService) {
+      try {
+        await this.promotionsService.addLoyaltyPoints(
+          userId,
+          Number(order.totalAmount),
+          order.id,
+        );
+      } catch (err) {
+        // Ghi log để không làm gián đoạn phản hồi thanh toán thành công
+        console.error('Lỗi khi tích lũy điểm thưởng loyalty:', err);
+      }
+    }
 
     return {
       replayed: false,
