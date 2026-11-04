@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { PromotionsService } from '../promotions/promotions.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import {
   assertStockAvailable,
@@ -26,7 +27,10 @@ export interface CreateOrderResult {
 
 @Injectable()
 export class OrdersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly promotionsService?: PromotionsService,
+  ) {}
   async create(
     userId: string,
     checkoutKey: string,
@@ -51,8 +55,22 @@ export class OrdersService {
         assertStockAvailable(lines, productMap);
 
         const subtotal = lines.reduce((sum, line) => sum + line.subtotal, 0);
-        const discountAmount = 0; // Voucher thuộc Task 10
-        const totalAmount = subtotal - discountAmount;
+        let discountAmount = 0;
+        let appliedVoucherCode: string | undefined = undefined;
+
+        if (dto.voucherCode && dto.voucherCode.trim().length > 0) {
+          const rawCode = dto.voucherCode.trim().toUpperCase();
+          if (this.promotionsService) {
+            const voucherResult = await this.promotionsService.applyVoucher({
+              code: rawCode,
+              orderValue: subtotal,
+            });
+            discountAmount = voucherResult.discountAmount;
+            appliedVoucherCode = voucherResult.code;
+          }
+        }
+
+        const totalAmount = Math.max(0, subtotal - discountAmount);
 
         return tx.order.create({
           data: {
@@ -62,6 +80,7 @@ export class OrdersService {
             subtotal,
             discountAmount,
             totalAmount,
+            voucherCode: appliedVoucherCode,
             items: {
               create: lines.map((line) => ({
                 productId: line.productId,
@@ -120,6 +139,7 @@ export class OrdersService {
       subtotal: order.subtotal.toFixed(2),
       discountAmount: order.discountAmount.toFixed(2),
       totalAmount: order.totalAmount.toFixed(2),
+      voucherCode: order.voucherCode ?? undefined,
       note: order.note,
       createdAt: order.createdAt,
       items: order.items.map((item) => ({

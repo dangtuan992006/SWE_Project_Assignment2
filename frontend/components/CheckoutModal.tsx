@@ -34,35 +34,19 @@ type QuoteResponse = {
   voucherCode?: string;
 };
 
-type VoucherDefinition = {
-  code: string;
-  type: 'PERCENTAGE' | 'FIXED';
-  value: number;
-  minOrder: number;
-  maxDiscount?: number;
-};
-
-// Danh sách mã voucher mẫu theo đặc tả và dữ liệu khởi tạo của hệ thống
-const AVAILABLE_VOUCHERS: Record<string, VoucherDefinition> = {
-  WELCOME10: {
-    code: 'WELCOME10',
-    type: 'PERCENTAGE',
-    value: 10,
-    minOrder: 40000,
-    maxDiscount: 20000,
-  },
-  BREW20K: {
-    code: 'BREW20K',
-    type: 'FIXED',
-    value: 20000,
-    minOrder: 60000,
-  },
-  FREESHIP: {
-    code: 'FREESHIP',
-    type: 'FIXED',
-    value: 15000,
-    minOrder: 30000,
-  },
+type ApplyVoucherResponse = {
+  success?: boolean;
+  message?: string;
+  data?: {
+    code: string;
+    discountType: string;
+    discountAmount: number;
+    finalAmount: number;
+  };
+  code?: string;
+  discountType?: string;
+  discountAmount?: number;
+  finalAmount?: number;
 };
 
 const formatCurrency = (amount: number) =>
@@ -96,7 +80,7 @@ export default function CheckoutModal({
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const applyVoucher = () => {
+  const applyVoucher = async () => {
     setError(null);
     const code = voucherCode.trim().toUpperCase();
     if (!code) {
@@ -106,40 +90,33 @@ export default function CheckoutModal({
 
     setIsApplyingVoucher(true);
     try {
-      const voucher = AVAILABLE_VOUCHERS[code];
-      if (!voucher) {
-        throw new Error('Mã giảm giá không hợp lệ hoặc đã hết hạn.');
-      }
-
-      if (totalAmount < voucher.minOrder) {
-        throw new Error(
-          `Đơn hàng tối thiểu ${voucher.minOrder.toLocaleString('vi-VN')}đ để sử dụng mã này.`,
-        );
-      }
-
-      const rawDiscount =
-        voucher.type === 'PERCENTAGE'
-          ? Math.round((totalAmount * voucher.value) / 100)
-          : voucher.value;
-
-      const discountAmount = Math.min(
-        Math.max(0, rawDiscount),
-        voucher.maxDiscount ?? totalAmount,
-        totalAmount,
+      const response = await apiClient.post<ApplyVoucherResponse>(
+        '/promotions/apply',
+        {
+          code,
+          orderValue: totalAmount,
+        },
       );
+
+      const voucherResult = response.data || response;
+      const discountAmount = Number(voucherResult.discountAmount || 0);
+      const calculatedFinal =
+        voucherResult.finalAmount !== undefined
+          ? Number(voucherResult.finalAmount)
+          : Math.max(0, totalAmount - discountAmount);
 
       setQuote({
         subtotal: totalAmount,
         discountAmount,
-        totalAmount: Math.max(0, totalAmount - discountAmount),
-        voucherCode: voucher.code,
+        totalAmount: calculatedFinal,
+        voucherCode: voucherResult.code || code,
       });
     } catch (applyError: unknown) {
       setQuote({ subtotal: totalAmount, discountAmount: 0, totalAmount });
       setError(
         applyError instanceof Error
           ? applyError.message
-          : 'Không thể áp dụng voucher.',
+          : 'Không thể áp dụng mã giảm giá này.',
       );
     } finally {
       setIsApplyingVoucher(false);
@@ -163,6 +140,7 @@ export default function CheckoutModal({
           quantity: item.quantity,
         })),
         note: note.trim() || undefined,
+        voucherCode: quote.voucherCode || undefined,
       };
 
       const order = await apiClient.post<CreateOrderResponse>(
