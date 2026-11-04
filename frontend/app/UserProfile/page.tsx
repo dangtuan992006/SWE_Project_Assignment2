@@ -19,8 +19,12 @@ import { apiClient } from "@/utils/apiClient";
 
 export default function UserProfilePage() {
   const router = useRouter();
-  const [user, setUser] = useState<UserInfo | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<UserInfo | null>(() => {
+    return authStorage.getUser() as UserInfo | null;
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    return !authStorage.getUser();
+  });
 
   useEffect(() => {
     const token = authStorage.getToken();
@@ -31,13 +35,13 @@ export default function UserProfilePage() {
       return;
     }
 
-    setUser(storedUser);
-    setLoading(false);
+    let active = true;
 
     // Đồng bộ thông tin mới nhất từ máy chủ (điểm tích lũy mới nhất)
     apiClient
       .get<{ user?: UserInfo } | UserInfo>("/auth/me")
       .then((data) => {
+        if (!active) return;
         const freshUser = (
           data && "user" in data ? data.user : data
         ) as UserInfo;
@@ -48,7 +52,16 @@ export default function UserProfilePage() {
       })
       .catch(() => {
         // Nếu lỗi kết nối vẫn giữ thông tin đã lưu trong localStorage
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
       });
+
+    return () => {
+      active = false;
+    };
   }, [router]);
 
   const handleLogout = () => {
