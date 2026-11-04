@@ -33,8 +33,9 @@ export default function Home() {
       })
       .catch(() => {
         if (ignore) return;
-        // Fallback sang MOCK_PRODUCTS nếu Backend chưa bật để UI demo vẫn hoạt động mượt mà
+        // Fallback sang MOCK_PRODUCTS nếu Backend chưa bật kèm thông báo cảnh báo lỗi
         setLoadedProducts(MOCK_PRODUCTS);
+        setError("Không thể kết nối đến máy chủ API. Đang hiển thị thực đơn mẫu.");
       })
       .finally(() => {
         if (!ignore) {
@@ -93,6 +94,23 @@ export default function Home() {
         </p>
       </div>
 
+      {/* CẢNH BÁO KẾT NỐI API (ERROR/WARNING STATE) */}
+      {error && (
+        <div
+          role="status"
+          className="flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800"
+        >
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={handleRetry}
+            className="shrink-0 inline-flex items-center rounded-lg bg-amber-800 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-amber-900 active:scale-95"
+          >
+            Thử lại ↻
+          </button>
+        </div>
+      )}
+
       {/* KHU VỰC THỰC ĐƠN */}
       <div className="space-y-4">
         <div className="flex items-end justify-between">
@@ -131,7 +149,7 @@ export default function Home() {
         <ProductGrid
           products={filteredProducts}
           isLoading={isLoading}
-          error={error}
+          error={null}
           onRetry={handleRetry}
           onSelectProduct={handleSelectProduct}
         />
