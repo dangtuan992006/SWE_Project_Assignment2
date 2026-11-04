@@ -1,35 +1,34 @@
+"use client";
 
-'use client';
-
-import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { useEffect, useState, Suspense } from 'react';
-import { apiClient } from '@/utils/apiClient';
-import type { ApiResponse, Order, OrderStatus } from '@/types/brewlite';
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { useEffect, useState, Suspense } from "react";
+import { apiClient } from "@/utils/apiClient";
+import type { ApiResponse, Order, OrderStatus } from "@/types/brewlite";
 
 const MOCK_ORDERS: Order[] = [
   {
-    id: 'mock-order-1042',
-    orderCode: '#1042',
-    userId: 'mock-user',
-    status: 'PAID',
+    id: "mock-order-1042",
+    orderCode: "#1042",
+    userId: "mock-user",
+    status: "PAID",
     subtotal: 89000,
     discountAmount: 0,
     totalAmount: 89000,
     items: [
       {
-        productId: 'mock-coffee-1',
-        productName: 'Cà phê sữa đá',
-        size: 'M',
+        productId: "mock-coffee-1",
+        productName: "Cà phê sữa đá",
+        size: "M",
         quantity: 2,
         selectedToppings: [],
         unitPrice: 30000,
         subtotal: 60000,
       },
       {
-        productId: 'mock-coffee-2',
-        productName: 'Bạc xỉu',
-        size: 'L',
+        productId: "mock-coffee-2",
+        productName: "Bạc xỉu",
+        size: "L",
         quantity: 1,
         selectedToppings: [],
         unitPrice: 29000,
@@ -39,18 +38,18 @@ const MOCK_ORDERS: Order[] = [
     createdAt: new Date().toISOString(),
   },
   {
-    id: 'mock-order-1041',
-    orderCode: '#1041',
-    userId: 'mock-user',
-    status: 'READY',
+    id: "mock-order-1041",
+    orderCode: "#1041",
+    userId: "mock-user",
+    status: "READY",
     subtotal: 65000,
     discountAmount: 5000,
     totalAmount: 60000,
     items: [
       {
-        productId: 'mock-coffee-3',
-        productName: 'Trà đào',
-        size: 'M',
+        productId: "mock-coffee-3",
+        productName: "Trà đào",
+        size: "M",
         quantity: 2,
         selectedToppings: [],
         unitPrice: 30000,
@@ -62,19 +61,19 @@ const MOCK_ORDERS: Order[] = [
 ];
 
 const STATUS_LABEL: Record<OrderStatus, string> = {
-  PENDING: 'Chờ thanh toán',
-  PAID: 'Đã thanh toán',
-  PREPARING: 'Đang pha chế',
-  READY: 'Sẵn sàng nhận nước',
-  COMPLETED: 'Đã hoàn thành',
-  PAYMENT_FAILED: 'Thanh toán thất bại',
-  CANCELLED: 'Đã hủy',
+  PENDING: "Chờ thanh toán",
+  PAID: "Đã thanh toán",
+  PREPARING: "Đang pha chế",
+  READY: "Sẵn sàng nhận nước",
+  COMPLETED: "Đã hoàn thành",
+  PAYMENT_FAILED: "Thanh toán thất bại",
+  CANCELLED: "Đã hủy",
 };
 
 function formatMoney(amount: number) {
-  return new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: 'VND',
+  return new Intl.NumberFormat("vi-VN", {
+    style: "currency",
+    currency: "VND",
   }).format(amount);
 }
 
@@ -82,29 +81,40 @@ function formatDate(value: string) {
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
-    return 'Không rõ thời gian';
+    return "Không rõ thời gian";
   }
 
-  return new Intl.DateTimeFormat('vi-VN', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
+  return new Intl.DateTimeFormat("vi-VN", {
+    dateStyle: "medium",
+    timeStyle: "short",
   }).format(date);
 }
 
 function OrderDetailContent() {
   const params = useParams<{ id: string }>();
-  const orderId = decodeURIComponent(params.id)
+  const orderId = decodeURIComponent(params.id);
 
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   useEffect(() => {
     let active = true;
 
     async function loadOrder() {
       setLoading(true);
-      setError('');
+      setError("");
+
+      // 1. Nếu là đơn mẫu thì hiển thị trực tiếp, không gọi API backend gây lỗi UUID
+      const mockOrder = MOCK_ORDERS.find((item) => item.id === orderId);
+      if (mockOrder) {
+        if (active) {
+          setOrder(mockOrder);
+          setError("Đang hiển thị đơn hàng mẫu. Dữ liệu chưa lấy từ máy chủ.");
+          setLoading(false);
+        }
+        return;
+      }
 
       try {
         const response = await apiClient.get<ApiResponse<Order>>(
@@ -112,9 +122,7 @@ function OrderDetailContent() {
         );
 
         if (!response.success || !response.data) {
-          throw new Error(
-            response.message || 'Không tải được đơn hàng.',
-          );
+          throw new Error(response.message || "Không tải được đơn hàng.");
         }
 
         if (active) {
@@ -122,20 +130,18 @@ function OrderDetailContent() {
         }
       } catch {
         // Chỉ dùng dữ liệu mẫu cho những ID mẫu đã định nghĩa.
-        const mockOrder = MOCK_ORDERS.find(
-          (item) => item.id === orderId,
-        );
+        const mockOrder = MOCK_ORDERS.find((item) => item.id === orderId);
 
         if (active) {
           if (mockOrder) {
             setOrder(mockOrder);
             setError(
-              'Đang hiển thị đơn hàng mẫu. Dữ liệu chưa lấy từ máy chủ.',
+              "Đang hiển thị đơn hàng mẫu. Dữ liệu chưa lấy từ máy chủ.",
             );
           } else {
             setOrder(null);
             setError(
-              'Không tải được đơn hàng. Vui lòng kiểm tra kết nối hoặc đăng nhập lại.',
+              "Không tải được đơn hàng. Vui lòng kiểm tra kết nối hoặc đăng nhập lại.",
             );
           }
         }
@@ -164,29 +170,28 @@ function OrderDetailContent() {
   if (!order) {
     return (
       <main className="mx-auto min-h-screen max-w-3xl px-4 py-8">
-        <Link
-          href="/orders"
-          className="text-sm text-amber-800 hover:underline"
-        >
+        <Link href="/orders" className="text-sm text-amber-800 hover:underline">
           ← Quay lại lịch sử đơn hàng
         </Link>
 
         <section className="mt-6 rounded-2xl border border-gray-200 p-6 text-center">
-          <div className="text-4xl" aria-hidden="true">☕</div>
+          <div className="text-4xl" aria-hidden="true">
+            ☕
+          </div>
           <h1 className="mt-3 text-xl font-bold text-gray-900">
             Không tìm thấy đơn hàng
           </h1>
           <p className="mt-2 text-sm text-gray-500">
-            {error || 'Đơn hàng không tồn tại hoặc bạn không có quyền xem.'}
+            {error || "Đơn hàng không tồn tại hoặc bạn không có quyền xem."}
           </p>
         </section>
       </main>
     );
   }
 
-  const isPaid = order.status === 'PAID';
-  const isFailed = order.status === 'PAYMENT_FAILED';
-  const isWaiting = order.status === 'PENDING';
+  const isPaid = order.status === "PAID";
+  const isFailed = order.status === "PAYMENT_FAILED";
+  const isWaiting = order.status === "PENDING";
 
   return (
     <main className="mx-auto min-h-screen max-w-3xl space-y-5 px-4 py-6 pb-24">
@@ -244,7 +249,7 @@ function OrderDetailContent() {
         ) : (
           <>
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-3xl text-amber-700">
-              {isWaiting ? '…' : '☕'}
+              {isWaiting ? "…" : "☕"}
             </div>
 
             <h1 className="mt-4 text-xl font-bold text-gray-900">
@@ -252,15 +257,15 @@ function OrderDetailContent() {
             </h1>
 
             <p className="mt-2 text-sm text-gray-600">
-              {order.status === 'READY'
-                ? 'Mời tới quầy nhận nước.'
-                : order.status === 'PREPARING'
-                  ? 'Đơn hàng đang được pha chế.'
-                  : order.status === 'COMPLETED'
-                    ? 'Đơn hàng đã hoàn thành.'
-                    : order.status === 'CANCELLED'
-                      ? 'Đơn hàng này đã bị hủy.'
-                      : 'Đang cập nhật trạng thái đơn hàng.'}
+              {order.status === "READY"
+                ? "Mời tới quầy nhận nước."
+                : order.status === "PREPARING"
+                  ? "Đơn hàng đang được pha chế."
+                  : order.status === "COMPLETED"
+                    ? "Đơn hàng đã hoàn thành."
+                    : order.status === "CANCELLED"
+                      ? "Đơn hàng này đã bị hủy."
+                      : "Đang cập nhật trạng thái đơn hàng."}
             </p>
           </>
         )}
@@ -278,9 +283,7 @@ function OrderDetailContent() {
 
       {/* Chi tiết món */}
       <section className="rounded-2xl border border-gray-200 bg-white p-5">
-        <h2 className="text-lg font-bold text-gray-900">
-          Chi tiết đơn hàng
-        </h2>
+        <h2 className="text-lg font-bold text-gray-900">Chi tiết đơn hàng</h2>
 
         <div className="mt-4 space-y-4">
           {order.items.map((item, index) => (
@@ -300,10 +303,10 @@ function OrderDetailContent() {
 
                   {item.selectedToppings.length > 0 && (
                     <p className="mt-1 text-xs text-gray-500">
-                      Topping:{' '}
+                      Topping:{" "}
                       {item.selectedToppings
                         .map((topping) => topping.name)
-                        .join(', ')}
+                        .join(", ")}
                     </p>
                   )}
                 </div>
@@ -358,12 +361,8 @@ function OrderDetailContent() {
 
         {order.note && (
           <div className="mt-4 rounded-xl bg-gray-50 p-3">
-            <p className="text-xs font-semibold text-gray-500">
-              Ghi chú
-            </p>
-            <p className="mt-1 text-sm text-gray-800">
-              {order.note}
-            </p>
+            <p className="text-xs font-semibold text-gray-500">Ghi chú</p>
+            <p className="mt-1 text-sm text-gray-800">{order.note}</p>
           </div>
         )}
       </section>
@@ -371,9 +370,7 @@ function OrderDetailContent() {
       {/* Thanh toán thất bại */}
       {isFailed && (
         <section className="rounded-2xl border border-red-200 bg-red-50 p-4">
-          <h2 className="font-bold text-red-800">
-            Cần thanh toán lại
-          </h2>
+          <h2 className="font-bold text-red-800">Cần thanh toán lại</h2>
 
           <p className="mt-2 text-sm text-red-700">
             Khi cổng thanh toán hỗ trợ thử lại, bạn có thể tiếp tục thanh toán
