@@ -14,7 +14,17 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Trigger Backend API Deployment
-        run: curl -X POST "${{ secrets.BACKEND_DEPLOY_WEBHOOK }}"
+        run: |
+          if [ -n "${{ secrets.BACKEND_DEPLOY_WEBHOOK }}" ]; then
+            curl -f -X POST "${{ secrets.BACKEND_DEPLOY_WEBHOOK }}"
+          else
+            echo "::warning::Chưa cấu hình BACKEND_DEPLOY_WEBHOOK trong GitHub Secrets. Bỏ qua bước kích hoạt triển khai Backend."
+          fi
 
       - name: Trigger Frontend Web Deployment
-        run: curl -X POST "${{ secrets.FRONTEND_DEPLOY_WEBHOOK }}"
+        run: |
+          if [ -n "${{ secrets.FRONTEND_DEPLOY_WEBHOOK }}" ]; then
+            curl -f -X POST "${{ secrets.FRONTEND_DEPLOY_WEBHOOK }}"
+          else
+            echo "::warning::Chưa cấu hình FRONTEND_DEPLOY_WEBHOOK trong GitHub Secrets. Bỏ qua bước kích hoạt triển khai Frontend."
+          fi
