@@ -2,7 +2,7 @@
 
 - **Dự án:** BrewLite — Ứng dụng đặt cà phê không dùng tiền mặt
 - **Môn học:** Công nghệ Phần mềm, Trường Đại học Sài Gòn
-- **Tài liệu thiết kế / sơ đồ:** [`Docs/diagrams/deployment.puml`](diagrams/deployment.puml) · [`Docs/diagrams/deployment.svg`](diagrams/deployment.svg)
+- **Tài liệu thiết kế / sơ đồ:** [`docs/diagrams/deployment.puml`](diagrams/deployment.puml) · [`docs/diagrams/deployment.svg`](diagrams/deployment.svg)
 
 ---
 
@@ -47,7 +47,7 @@ PostgreSQL + Persistent Volume   Cổng thanh toán mô phỏng (Mock Payment)
 | **CI (Tích hợp liên tục)** | Cài đặt dependencies, chạy linter, kiểm thử tự động và kiểm tra build trên mỗi commit / PR | Chỉ sử dụng kho lưu trữ bí mật của hệ thống CI (GitHub Secrets); không kết nối đến DB Production |
 | **Production (Vận hành)** | Phục vụ lưu lượng truy cập thực tế của khách hàng | Secret được quản lý an toàn bởi nhà cung cấp đám mây, bắt buộc HTTPS, cơ sở dữ liệu bền vững và có sao lưu định kỳ |
 
-Tệp `backend/.env.example` trong repository là nguồn tham chiếu chuẩn cho các biến môi trường Backend:
+Tệp `apps/api/.env.example` trong repository là nguồn tham chiếu chuẩn cho các biến môi trường Backend:
 
 ```dotenv
 PORT=8080
@@ -66,7 +66,7 @@ NEXT_PUBLIC_API_URL=https://api.brewlite.example.com
 ## 3. Cấu hình triển khai Production
 
 ### 3.1. Dịch vụ Web (Frontend - Next.js)
-1. Cấu hình thư mục gốc (Root Directory) trỏ về: `frontend`.
+1. Cấu hình thư mục gốc (Root Directory) trỏ về: `apps/web`.
 2. Lệnh cài đặt dependencies: `npm ci`.
 3. Lệnh build ứng dụng: `npm run build`.
 4. Lệnh khởi chạy: `npm run start`.
@@ -74,7 +74,7 @@ NEXT_PUBLIC_API_URL=https://api.brewlite.example.com
 6. Cấu hình tên miền và chứng chỉ HTTPS (SSL/TLS).
 
 ### 3.2. Dịch vụ API (Backend - NestJS)
-1. Cấu hình thư mục gốc (Root Directory) trỏ về: `backend`.
+1. Cấu hình thư mục gốc (Root Directory) trỏ về: `apps/api`.
 2. Lệnh cài đặt dependencies: `npm ci`.
 3. Lệnh build ứng dụng: `npm run build`.
 4. Lệnh khởi chạy: `npm run start:prod`.

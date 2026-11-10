@@ -2,12 +2,12 @@
 
 ### Quy ước định danh sơ đồ và tài liệu thiết kế
 
-- **UseCase-01:** Sơ đồ use-case tổng quát (`Docs/diagrams/usecase-overview.puml`)
-- **Activity-01:** Sơ đồ hoạt động luồng đặt món & thanh toán (`Docs/diagrams/activity-checkout.puml`)
-- **Sequence-01:** Sơ đồ tuần tự luồng checkout trọng tâm (`Docs/diagrams/sequence-checkout.puml`)
-- **Class-01:** Sơ đồ lớp miền domain model (`Docs/diagrams/class-domain.puml`)
-- **Deployment-01:** Sơ đồ triển khai production (`Docs/diagrams/deployment.puml`)
-- **Architecture-01:** Tài liệu thiết kế kiến trúc hệ thống (`Docs/architecture/README.md`)
+- **UseCase-01:** Sơ đồ use-case tổng quát (`docs/diagrams/usecase-overview.puml`)
+- **Activity-01:** Sơ đồ hoạt động luồng đặt món & thanh toán (`docs/diagrams/activity-checkout.puml`)
+- **Sequence-01:** Sơ đồ tuần tự luồng checkout trọng tâm (`docs/diagrams/sequence-checkout.puml`)
+- **Class-01:** Sơ đồ lớp miền domain model (`docs/diagrams/class-domain.puml`)
+- **Deployment-01:** Sơ đồ triển khai production (`docs/diagrams/deployment.puml`)
+- **Architecture-01:** Tài liệu thiết kế kiến trúc hệ thống (`docs/architecture/README.md`)
 
 ---
 
@@ -27,10 +27,10 @@
 | FR-10      | US-08 Tự động tính tổng tiền giỏ hàng      | Activity-01, Class-01              | Zustand CartStore (calcTotal)                                  | T10  |
 | FR-11      | US-09 Hiển thị số lượng trên Cart Badge    | Activity-01, Class-01              | Next.js CartBadge                                              | T11  |
 | FR-12      | UC-03 Đặt hàng từ giỏ hàng                 | Activity-01, Sequence-01, Class-01 | POST /orders                                                   | T12  |
-| FR-13      | UC-04 Thanh toán không tiền mặt            | Sequence-01, Class-01              | POST /payments, backend/prisma/schema.prisma (Payment)         | T13  |
+| FR-13      | UC-04 Thanh toán không tiền mặt            | Sequence-01, Class-01              | POST /payments, apps/api/prisma/schema.prisma (Payment)         | T13  |
 | FR-14      | US-10 Hiển thị xác nhận đơn hàng           | Activity-01, Sequence-01           | Next.js OrderConfirmPage                                       | T14  |
 | FR-15      | US-11 Xem lịch sử đơn hàng                 | UseCase-01, Class-01               | GET /orders/me                                                 | T15  |
-| FR-16      | UC-05 Áp dụng mã khuyến mãi                | Class-01                           | backend/prisma/schema.prisma (Voucher), backend/prisma/seed.ts | T16  |
+| FR-16      | UC-05 Áp dụng mã khuyến mãi                | Class-01                           | apps/api/prisma/schema.prisma (Voucher), apps/api/prisma/seed.ts | T16  |
 | NFR-01     | NFR-01 Thời gian phản hồi API (< 500ms)    | Deployment-01, Architecture-01     | NestJS Core, PostgreSQL Indexing                               | T17  |
 | NFR-02     | NFR-02 Khả năng xử lý tải                  | Deployment-01, Architecture-01     | PostgreSQL Connection Pool                                     | T18  |
 | NFR-03     | NFR-03 Xác thực JWT bắt buộc               | Sequence-01, Architecture-01       | JwtStrategy, PassportModule                                    | T19  |
@@ -40,9 +40,9 @@
 | NFR-07     | NFR-07 Kiểm tra dữ liệu đầu vào và lỗi     | Sequence-01                        | ValidationPipe, class-validator DTO                            | T23  |
 | NFR-08     | NFR-08 Phản hồi giao diện (Loading, Error) | Activity-01                        | Next.js UI State Components                                    | T24  |
 | NFR-09     | NFR-09 Xử lý ngoại lệ tập trung            | Sequence-01, Architecture-01       | AllExceptionsFilter                                            | T25  |
-| NFR-10     | NFR-10 Tính nhất quán dữ liệu đơn hàng     | Sequence-01                        | Database Transaction, backend/prisma/schema.prisma (version)   | T26  |
+| NFR-10     | NFR-10 Tính nhất quán dữ liệu đơn hàng     | Sequence-01                        | Database Transaction, apps/api/prisma/schema.prisma (version)   | T26  |
 | NFR-11     | NFR-11 Khôi phục dữ liệu sau sự cố         | Deployment-01                      | Docker Volume (postgres_data)                                  | T27  |
-| NFR-12     | NFR-12 Cấu trúc phân lớp module rõ ràng    | Architecture-01                    | backend/src, frontend/app                                      | T28  |
+| NFR-12     | NFR-12 Cấu trúc phân lớp module rõ ràng    | Architecture-01                    | apps/api/src, apps/web/app                                      | T28  |
 | NFR-13     | NFR-13 Tính nhất quán định dạng mã nguồn   | Architecture-01                    | .prettierrc, .oxlintrc.json                                    | T29  |
 | NFR-14     | NFR-14 Kiểm thử chức năng trọng yếu        | Architecture-01                    | Jest Unit, Integration, E2E Test                               | T30  |
 | NFR-15     | NFR-15 Đóng gói môi trường bằng Docker     | Deployment-01                      | Dockerfile, docker-compose.yml                                 | T31  |
