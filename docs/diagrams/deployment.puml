@@ -1,5 +1,5 @@
 @startuml
-title BrewLite - Sơ đồ triển khai môi trường Production
+title BrewLite - Sơ đồ triển khai môi trường Production (Task 3.2)
 
 skinparam shadowing false
 skinparam componentStyle rectangle
@@ -10,6 +10,14 @@ skinparam packageStyle rectangle
 actor "Người dùng\n(Trình duyệt / PWA)" as user
 
 cloud "Internet công cộng" as internet
+
+node "GitHub Actions (CI Runner)" as ci {
+  component "CI/CD Pipeline\n(Lint -> Test -> Build Image)" as pipeline
+}
+
+node "Container Registry\n(GHCR / Docker Hub)" as registry {
+  artifact "Docker Image: brewlite-api\n(tag: commit SHA / v1.0.0)" as image
+}
 
 node "Dịch vụ Web/CDN\n(Render / Vercel / tương đương)" as web {
   component "Giao diện Next.js\n(tài nguyên tĩnh + SSR)" as next
@@ -26,6 +34,11 @@ database "PostgreSQL được quản lý\nlưu trữ bền vững" as db {
 
 cloud "Cổng thanh toán giả lập\n(hoặc nhà cung cấp bên ngoài)" as payment
 
+' Luồng đóng gói & phát hành container
+pipeline --> registry : Docker Push Image (tag: SHA)\nqua token bảo mật CI
+registry ..> api : Docker Pull Image\nđể khởi chạy Container
+
+' Luồng người dùng & runtime production
 user --> internet : HTTPS
 internet --> web : HTTPS
 web --> api : REST qua HTTPS\nCORS allow-list
@@ -46,6 +59,12 @@ Log: stdout/stderr
 Tự khởi động lại khi lỗi
 end note
 
+note bottom of registry
+Quản lý phiên bản Image bất biến:
+- Gắn thẻ (tag) theo commit SHA
+- Hỗ trợ rollback nhanh khi lỗi
+end note
+
 note bottom of db
 Sao lưu, migration và thời hạn lưu trữ
 được quản lý riêng với quá trình deploy.
@@ -54,7 +73,7 @@ end note
 legend
   == Phân tách môi trường ==
   Local: dịch vụ chạy trên máy lập trình viên; chỉ dùng localhost.
-  CI: build, test và lint; không dùng secret Production.
+  CI / Registry: đóng gói tự động, kiểm tra bảo mật, lưu trữ image tag bất biến.
   Production: HTTPS công khai, đường truyền API/DB nội bộ,
   secret được quản lý, health check và sao lưu bền vững.
 endlegend
