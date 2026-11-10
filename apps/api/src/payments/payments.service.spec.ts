@@ -38,6 +38,7 @@ function mockOrder(over: Record<string, unknown> = {}) {
     orderNumber: 1042,
     userId: USER_ID,
     status: OrderStatus.PENDING,
+    createdAt: new Date(),
     totalAmount: D(58000),
     items: [
       {
@@ -53,6 +54,10 @@ function mockOrder(over: Record<string, unknown> = {}) {
 
 function setupMockService() {
   const tx = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
+    user: { update: jest.fn().mockResolvedValue({ id: USER_ID, loyaltyPoints: 5 }) },
+    loyaltyTransaction: { create: jest.fn().mockResolvedValue({}) },
+    voucher: { findUnique: jest.fn(), update: jest.fn() },
     product: {
       findUnique: jest.fn().mockImplementation(() =>
         Promise.resolve(mockProduct()),
@@ -60,6 +65,7 @@ function setupMockService() {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     order: {
+      findUniqueOrThrow: jest.fn().mockResolvedValue(mockOrder()),
       update: jest.fn().mockImplementation(({ data }) =>
         Promise.resolve({
           ...mockOrder(),
@@ -68,6 +74,8 @@ function setupMockService() {
       ),
     },
     payment: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       create: jest.fn().mockImplementation(({ data }) =>
         Promise.resolve({
           id: 'pay-001',
@@ -80,6 +88,7 @@ function setupMockService() {
 
   const prisma = {
     payment: {
+      findFirst: jest.fn().mockResolvedValue(null),
       findUnique: jest.fn().mockResolvedValue(null),
       count: jest.fn().mockResolvedValue(0),
     },
@@ -111,6 +120,61 @@ describe('PaymentsService (Task 8 + Task 10.2 & 10.3)', () => {
   };
 
   describe('Thanh toán thành công (Happy Path & Optimistic Locking)', () => {
+    it('không cho mô phỏng thất bại để đổi trạng thái đơn có giao dịch VNPay', async () => {
+      const { service, prisma, tx } = setupMockService();
+      prisma.payment.findFirst.mockResolvedValue({ id: 'pending-vnpay' });
+      await expect(service.processPayment(USER_ID, validKey, { ...validDto, simulateFailure: true })).rejects.toThrow('VNPay');
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(tx.order.update).not.toHaveBeenCalled();
+    });
+    it('chặn Mock nếu đơn vẫn có giao dịch VNPay cần đối soát', async () => {
+      const { service, tx } = setupMockService();
+      tx.payment.findFirst.mockResolvedValue({ id: 'pending-vnpay' });
+      await expect(service.processPayment(USER_ID, validKey, validDto)).rejects.toThrow('VNPay');
+      expect(tx.product.updateMany).not.toHaveBeenCalled();
+      expect(tx.payment.create).not.toHaveBeenCalled();
+    });
+
+    it('Mock hủy đơn quá 10 phút, không trừ kho hay tạo payment thành công', async () => {
+      const { service, tx } = setupMockService();
+      tx.order.findUniqueOrThrow.mockResolvedValue(mockOrder({ createdAt: new Date(Date.now() - 11 * 60000) }));
+      await expect(service.processPayment(USER_ID, validKey, validDto)).rejects.toThrow('quá hạn');
+      expect(tx.order.update).toHaveBeenCalledWith({ where: { id: ORDER_ID }, data: { status: OrderStatus.CANCELLED } });
+      expect(tx.product.updateMany).not.toHaveBeenCalled();
+      expect(tx.payment.create).not.toHaveBeenCalled();
+    });
+
+    it('Mock tăng lượt dùng voucher và cộng điểm ngay trong transaction thanh toán', async () => {
+      const { service, prisma, tx } = setupMockService();
+      tx.order.findUniqueOrThrow.mockResolvedValue(mockOrder({ voucherCode: 'BREW10' }));
+      tx.voucher.findUnique.mockResolvedValue({ id: 'voucher-1', usageLimit: 10, usedCount: 9 });
+
+      await service.processPayment(USER_ID, validKey, validDto);
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(tx.voucher.update).toHaveBeenCalledWith({ where: { id: 'voucher-1' }, data: { usedCount: { increment: 1 } } });
+      expect(tx.user.update).toHaveBeenCalledWith({ where: { id: USER_ID }, data: { loyaltyPoints: { increment: 5 } } });
+      expect(tx.loyaltyTransaction.create).toHaveBeenCalledWith({
+        data: { userId: USER_ID, orderId: ORDER_ID, points: 5, type: 'EARN' },
+      });
+    });
+
+    it('lỗi cộng điểm làm transaction thất bại, không trả thanh toán thành công', async () => {
+      const { service, tx } = setupMockService();
+      tx.loyaltyTransaction.create.mockRejectedValue(new Error('loyalty write failed'));
+      await expect(service.processPayment(USER_ID, validKey, validDto)).rejects.toThrow('loyalty write failed');
+      expect(tx.order.update).not.toHaveBeenCalled();
+      expect(tx.payment.create).not.toHaveBeenCalled();
+    });
+
+    it('đọc lại dưới khóa thấy đơn đã PAID: không trừ kho/cộng điểm lần nữa', async () => {
+      const { service, tx } = setupMockService();
+      tx.order.findUniqueOrThrow.mockResolvedValue(mockOrder({ status: OrderStatus.PAID }));
+      await expect(service.processPayment(USER_ID, validKey, validDto)).rejects.toThrow(ConflictException);
+      expect(tx.product.updateMany).not.toHaveBeenCalled();
+      expect(tx.user.update).not.toHaveBeenCalled();
+    });
+
     it('thanh toán thành công đơn PENDING, trừ kho với version và đổi trạng thái sang PAID', async () => {
       const { service, tx } = setupMockService();
 
@@ -311,6 +375,113 @@ describe('PaymentsService (Task 8 + Task 10.2 & 10.3)', () => {
       await expect(
         service.processPayment(USER_ID, validKey, validDto),
       ).rejects.toThrow(ConflictException);
+    });
+
+    it('Task 10(c) Concurrency Test: 2 khách đồng thời thanh toán mua món cuối cùng (stock = 1, version = 1): đúng 1 người thành công và 1 người nhận CONCURRENCY_CONFLICT, tồn kho không bao giờ âm', async () => {
+      let currentStock = 1;
+      let currentVersion = 1;
+
+      const order1Id = 'order-client-1';
+      const order2Id = 'order-client-2';
+      const user1Id = 'user-1';
+      const user2Id = 'user-2';
+
+      const sharedPrisma = {
+        payment: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          findFirst: jest.fn().mockResolvedValue(null),
+          count: jest.fn().mockResolvedValue(0),
+        },
+        order: {
+          findUnique: jest.fn((args: { where: { id: string } }) => {
+            const isO1 = args.where.id === order1Id;
+            return Promise.resolve(mockOrder({
+              id: isO1 ? order1Id : order2Id,
+              userId: isO1 ? user1Id : user2Id,
+              status: OrderStatus.PENDING,
+              items: [{ productId: PRODUCT_ID, quantity: 1 }],
+            }));
+          }),
+        },
+        $transaction: jest.fn(async (callback: (tx: any) => Promise<any>) => {
+          const tx = {
+            $queryRaw: jest.fn().mockResolvedValue([]),
+            order: {
+              findUniqueOrThrow: jest.fn((args: { where: { id: string } }) => {
+                const isO1 = args.where.id === order1Id;
+                return Promise.resolve(mockOrder({
+                  id: isO1 ? order1Id : order2Id,
+                  userId: isO1 ? user1Id : user2Id,
+                  status: OrderStatus.PENDING,
+                  items: [{ productId: PRODUCT_ID, quantity: 1 }],
+                }));
+              }),
+              update: jest.fn().mockImplementation(({ where, data }: { where: { id: string }; data: { status: OrderStatus } }) =>
+                Promise.resolve(mockOrder({ id: where.id, status: data.status })),
+              ),
+            },
+            payment: {
+              findFirst: jest.fn().mockResolvedValue(null),
+              create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+                Promise.resolve({
+                  id: 'pay-001',
+                  ...data,
+                  completedAt: new Date(),
+                }),
+              ),
+            },
+            product: {
+              findUnique: jest.fn().mockImplementation(() =>
+                Promise.resolve(mockProduct({ id: PRODUCT_ID, stock: currentStock, version: currentVersion })),
+              ),
+              updateMany: jest.fn().mockImplementation(({ where }: { where: { version: number; stock: { gte: number } } }) => {
+                if (where.version === currentVersion && currentStock >= where.stock.gte) {
+                  currentStock -= 1;
+                  currentVersion += 1;
+                  return Promise.resolve({ count: 1 });
+                }
+                return Promise.resolve({ count: 0 });
+              }),
+            },
+            user: {
+              update: jest.fn().mockImplementation(({ where }: { where: { id: string } }) =>
+                Promise.resolve({ id: where.id, loyaltyPoints: 10 }),
+              ),
+            },
+            loyaltyTransaction: { create: jest.fn() },
+            voucher: { findUnique: jest.fn().mockResolvedValue(null), update: jest.fn() },
+          };
+          return callback(tx);
+        }),
+      };
+
+      const testService = new PaymentsService(sharedPrisma as never);
+
+      const req1 = testService.processPayment(user1Id, 'key-client-1', {
+        orderId: order1Id,
+        paymentMethod: PaymentMethod.E_WALLET,
+      });
+      const req2 = testService.processPayment(user2Id, 'key-client-2', {
+        orderId: order2Id,
+        paymentMethod: PaymentMethod.E_WALLET,
+      });
+
+      const results = await Promise.allSettled([req1, req2]);
+
+      const fulfilled = results.filter((r) => r.status === 'fulfilled');
+      const rejected = results.filter((r) => r.status === 'rejected');
+
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+
+      const rejectionReason = (rejected[0] as PromiseRejectedResult).reason;
+      expect(rejectionReason).toBeInstanceOf(ConflictException);
+      expect((rejectionReason as ConflictException).getResponse()).toMatchObject({
+        code: 'CONCURRENCY_CONFLICT',
+      });
+
+      expect(currentStock).toBe(0);
+      expect(currentVersion).toBe(2);
     });
   });
 

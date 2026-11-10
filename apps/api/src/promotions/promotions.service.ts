@@ -12,12 +12,19 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { ApplyVoucherDto, ApplyVoucherResult } from './dto/apply-voucher.dto';
 import { DiscountType } from '../common/types/brewlite';
+import { addLoyaltyPointsInTransaction } from './loyalty-points';
+
+export const REWARD_OPTIONS: Record<
+  string,
+  { points: number; value: number; prefix: string }
+> = {
+  REWARD10K: { points: 10, value: 10000, prefix: 'LP10K' },
+  REWARD20K: { points: 20, value: 20000, prefix: 'LP20K' },
+  REWARD50K: { points: 50, value: 50000, prefix: 'LP50K' },
+};
 
 @Injectable()
 export class PromotionsService {
-  // Quy tắc quy đổi điểm mặc định: Mỗi 10.000 VND thanh toán = 1 điểm thưởng
-  private static readonly VND_PER_LOYALTY_POINT = 10000;
-
   constructor(private readonly prisma: PrismaService) {}
 
   /**
@@ -134,47 +141,93 @@ export class PromotionsService {
     orderId?: string,
     customPoints?: number,
   ) {
-    const pointsToAdd =
-      customPoints !== undefined
-        ? customPoints
-        : Math.floor(
-            Math.max(0, orderAmount) / PromotionsService.VND_PER_LOYALTY_POINT,
-          );
+    return this.prisma.$transaction(tx =>
+      addLoyaltyPointsInTransaction(tx, userId, orderAmount, orderId, customPoints),
+    );
+  }
 
-    if (pointsToAdd <= 0) {
-      return {
-        userId,
-        pointsAdded: 0,
-        loyaltyPoints: 0,
-        transaction: null,
-      };
+  /**
+   * Lấy danh sách các mã giảm giá đang kích hoạt, còn hạn sử dụng và còn lượt dùng
+   */
+  async getAvailableVouchers() {
+    const now = new Date();
+    const vouchers = await this.prisma.voucher.findMany({
+      where: {
+        isActive: true,
+        OR: [{ endDate: null }, { endDate: { gte: now } }],
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return vouchers.filter(
+      (voucher) =>
+        voucher.usageLimit === null ||
+        voucher.usageLimit === undefined ||
+        Number(voucher.usedCount ?? 0) < Number(voucher.usageLimit),
+    );
+  }
+
+  /**
+   * Đổi điểm thưởng Loyalty tích lũy lấy mã giảm giá (Voucher)
+   * Phục vụ endpoint POST /promotions/redeem-points
+   */
+  async redeemPoints(userId: string, rewardId: string) {
+    const option = REWARD_OPTIONS[rewardId];
+    if (!option) {
+      throw new BadRequestException('Gói đổi điểm không hợp lệ.');
     }
 
-    // Thực thi trong Prisma Transaction để đảm bảo tính toàn vẹn dữ liệu
-    return await (this.prisma as any).$transaction(async (tx: any) => {
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+      });
+
+      if (!user) {
+        throw new NotFoundException('Người dùng không tồn tại.');
+      }
+
+      if (user.loyaltyPoints < option.points) {
+        throw new BadRequestException(
+          `Bạn cần tối thiểu ${option.points} điểm để đổi mã này.`,
+        );
+      }
+
       const updatedUser = await tx.user.update({
         where: { id: userId },
         data: {
-          loyaltyPoints: {
-            increment: pointsToAdd,
-          },
+          loyaltyPoints: { decrement: option.points },
         },
       });
 
-      const transaction = await tx.loyaltyTransaction.create({
+      await tx.loyaltyTransaction.create({
         data: {
           userId,
-          orderId: orderId ?? null,
-          points: pointsToAdd,
-          type: 'EARN',
+          points: option.points,
+          type: 'REDEEM',
+        },
+      });
+
+      const code = `${option.prefix}-${Date.now().toString(36).toUpperCase()}`;
+
+      await tx.voucher.create({
+        data: {
+          code,
+          discountType: 'FIXED_AMOUNT',
+          discountValue: option.value,
+          minOrderValue: option.value * 2,
+          usageLimit: 1,
+          usedCount: 0,
+          isActive: true,
+          endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         },
       });
 
       return {
-        userId: updatedUser.id,
-        pointsAdded: pointsToAdd,
-        loyaltyPoints: updatedUser.loyaltyPoints,
-        transaction,
+        success: true,
+        message: 'Đổi điểm thành công!',
+        code,
+        discountValue: option.value,
+        remainingPoints: updatedUser.loyaltyPoints,
       };
     });
   }

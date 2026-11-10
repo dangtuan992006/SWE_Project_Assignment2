@@ -4,7 +4,7 @@ import {
   NotFoundException,
   ValidationPipe,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { OrderStatus, Prisma } from '@prisma/client';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrdersService } from './orders.service';
 
@@ -67,6 +67,8 @@ function makeService() {
     order: {
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null),
+      update: jest.fn(),
     },
     $transaction: jest.fn((cb: (t: typeof tx) => unknown) => cb(tx)),
   };
@@ -166,6 +168,24 @@ describe('OrdersService.create', () => {
 describe('OrdersService.findMyOrders', () => {
   const OTHER_USER = 'u0000000-0000-4000-8000-000000000002';
 
+  it('đọc 50 đơn quá hạn mà không gọi quét hoặc mở transaction hủy đơn', async () => {
+    const { prisma } = makeService();
+    const expiration = { expireDueOrders: jest.fn(), expireOrder: jest.fn() };
+    const service = new OrdersService(prisma as never, undefined, expiration as never);
+    prisma.order.findMany.mockResolvedValue(Array.from({ length: 50 }, (_, i) =>
+      storedOrder({ id: `order-${i}`, orderNumber: 1000 + i }),
+    ));
+
+    const result = await service.findMyOrders(USER);
+
+    expect(result).toHaveLength(50);
+    expect(result.every(order => order.status === 'PENDING')).toBe(true);
+    expect(expiration.expireDueOrders).not.toHaveBeenCalled();
+    expect(expiration.expireOrder).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.order.findMany).toHaveBeenCalledTimes(1);
+  });
+
   it('chỉ lọc đơn theo userId của người gọi', async () => {
     const { service, prisma } = makeService();
     prisma.order.findMany.mockResolvedValue([storedOrder()]);
@@ -238,6 +258,21 @@ describe('OrdersService.findMyOrders', () => {
 describe('OrdersService.findOneForUser', () => {
   const OTHER_USER = 'u0000000-0000-4000-8000-000000000002';
 
+  it('vẫn xử lý hết hạn trước khi đọc chi tiết, trả trạng thái CANCELLED mới nhất', async () => {
+    const { prisma } = makeService();
+    prisma.order.findFirst.mockResolvedValue(storedOrder());
+    const expiration = { expireOrder: jest.fn().mockImplementation(async () => {
+      prisma.order.findFirst.mockResolvedValue(storedOrder({ status: 'CANCELLED' }));
+      return true;
+    }) };
+    const service = new OrdersService(prisma as never, undefined, expiration as never);
+
+    const result = await service.findOneForUser(USER, 'order-1');
+
+    expect(expiration.expireOrder).toHaveBeenCalledWith('order-1', USER);
+    expect(result.status).toBe('CANCELLED');
+  });
+
   it('chủ đơn xem được chi tiết kèm items', async () => {
     const { service, prisma } = makeService();
     prisma.order.findFirst.mockResolvedValue(storedOrder());
@@ -297,6 +332,87 @@ describe('OrdersService.findOneForUser', () => {
     expect((err1 as NotFoundException).message).toBe(
       (err2 as NotFoundException).message,
     );
+  });
+
+  describe('updateStatus (Task 10.1 Order State Machine)', () => {
+    it('chuyển trạng thái hợp lệ từ PAID sang PREPARING thành công', async () => {
+      const { service, prisma } = makeService();
+      const current = storedOrder({ status: OrderStatus.PAID });
+      const updated = storedOrder({ status: OrderStatus.PREPARING });
+      prisma.order.findUnique.mockResolvedValue(current);
+      prisma.order.update.mockResolvedValue(updated);
+
+      const result = await service.updateStatus('order-1', OrderStatus.PREPARING);
+
+      expect(result.status).toBe(OrderStatus.PREPARING);
+      expect(prisma.order.update).toHaveBeenCalledWith({
+        where: { id: 'order-1' },
+        data: { status: OrderStatus.PREPARING },
+        include: expect.any(Object),
+      });
+    });
+
+    it('chặn chuyển trạng thái sai quy tắc State Machine (PENDING -> COMPLETED) ném ConflictException', async () => {
+      const { service, prisma } = makeService();
+      const current = storedOrder({ status: OrderStatus.PENDING });
+      prisma.order.findUnique.mockResolvedValue(current);
+
+      await expect(
+        service.updateStatus('order-1', OrderStatus.COMPLETED),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.order.update).not.toHaveBeenCalled();
+    });
+
+    it('ném NotFoundException nếu đơn hàng cần cập nhật không tồn tại', async () => {
+      const { service, prisma } = makeService();
+      prisma.order.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.updateStatus('non-existent', OrderStatus.PREPARING),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('cancelOrder (Hủy đơn & Hoàn tiền)', () => {
+    it('hủy ngay lập tức nếu đơn ở trạng thái PENDING', async () => {
+      const { service, prisma } = makeService();
+      const order = storedOrder({ status: OrderStatus.PENDING });
+      prisma.order.findFirst.mockResolvedValue(order);
+      prisma.order.update.mockResolvedValue({
+        ...order,
+        status: OrderStatus.CANCELLED,
+      });
+
+      const result = await service.cancelOrder(USER, 'order-1');
+      expect(result.success).toBe(true);
+      expect(result.status).toBe(OrderStatus.CANCELLED);
+    });
+
+    it('chặn hủy và ném ConflictException nếu đơn đang PREPARING hoặc READY hoặc COMPLETED', async () => {
+      const { service, prisma } = makeService();
+      const order = storedOrder({ status: OrderStatus.PREPARING });
+      prisma.order.findFirst.mockResolvedValue(order);
+
+      await expect(service.cancelOrder(USER, 'order-1')).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
+    it('tạo yêu cầu hoàn tiền nếu đơn đã PAID', async () => {
+      const { service, prisma } = makeService();
+      const order = storedOrder({ status: OrderStatus.PAID });
+      prisma.order.findFirst.mockResolvedValue(order);
+      prisma.refundRequest = {
+        findUnique: jest.fn().mockResolvedValue(null),
+        upsert: jest.fn().mockResolvedValue({ id: 'ref-1', status: 'PENDING' }),
+      };
+      prisma.order.findUnique.mockResolvedValue(order);
+
+      const result = await service.cancelOrder(USER, 'order-1', 'Lý do đổi ý');
+      expect(result.success).toBe(true);
+      expect(result.isRefundPending).toBe(true);
+      expect(prisma.refundRequest.upsert).toHaveBeenCalled();
+    });
   });
 });
 
