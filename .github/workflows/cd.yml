@@ -126,19 +126,21 @@ jobs:
 
       - name: Đóng gói Docker Image Backend (Tag commit SHA & latest)
         run: |
+          IMAGE_REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           docker build \
             --file apps/api/Dockerfile \
-            --tag ghcr.io/${{ github.repository }}/brewlite-api:${{ github.sha }} \
-            --tag ghcr.io/${{ github.repository }}/brewlite-api:latest \
+            --tag ghcr.io/${IMAGE_REPO}/brewlite-api:${{ github.sha }} \
+            --tag ghcr.io/${IMAGE_REPO}/brewlite-api:latest \
             apps/api
 
       - name: Đóng gói Docker Image Frontend (Tag commit SHA & latest)
         run: |
+          IMAGE_REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           docker build \
             --file apps/web/Dockerfile \
             --build-arg NEXT_PUBLIC_API_URL=${{ secrets.PROD_API_URL || 'https://api-brewlite.onrender.com' }} \
-            --tag ghcr.io/${{ github.repository }}/brewlite-web:${{ github.sha }} \
-            --tag ghcr.io/${{ github.repository }}/brewlite-web:latest \
+            --tag ghcr.io/${IMAGE_REPO}/brewlite-web:${{ github.sha }} \
+            --tag ghcr.io/${IMAGE_REPO}/brewlite-web:latest \
             apps/web
 
       - name: Kích hoạt triển khai Backend API lên Cloud PaaS
