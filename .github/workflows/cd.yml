@@ -47,10 +47,10 @@ jobs:
       - name: Checkout mã nguồn
         uses: actions/checkout@v4
 
-      - name: Cài đặt Node.js 20
+      - name: Cài đặt Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: "npm"
           cache-dependency-path: apps/api/package-lock.json
 
@@ -89,10 +89,10 @@ jobs:
       - name: Checkout mã nguồn
         uses: actions/checkout@v4
 
-      - name: Cài đặt Node.js 20
+      - name: Cài đặt Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Build Backend NestJS
         working-directory: apps/api
@@ -172,10 +172,10 @@ jobs:
       - name: Checkout mã nguồn
         uses: actions/checkout@v4
 
-      - name: Cài đặt Node.js 20
+      - name: Cài đặt Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Chờ môi trường Cloud khởi động và sẵn sàng
         run: |
