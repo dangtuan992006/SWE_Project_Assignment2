@@ -14,6 +14,7 @@
  *   4. Tài khoản (Profile)
  * - Tự động đổi màu làm nổi bật tab đang xem dựa trên đường dẫn hiện tại (usePathname).
  * - Cập nhật số lượng giỏ hàng qua Zustand store.
+ * - Ngăn chặn triệt để lỗi Hydration Mismatch bằng cách chỉ render sau khi đã mount trên client.
  */
 
 import React, { useEffect, useState, useSyncExternalStore } from "react";
@@ -21,6 +22,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCartStore } from "@/stores/cartStore";
 import { authStorage } from "@/utils/authStorage";
+import { User } from "@/types/brewlite";
 
 const emptySubscribe = () => () => {};
 
@@ -33,18 +35,29 @@ export default function BottomNav() {
   );
   const cartCount = useCartStore((state) => state.getTotalQuantity());
 
-  const displayCount = mounted ? cartCount : 0;
-
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     const checkAuth = () => {
-      setIsLoggedIn(Boolean(authStorage.getToken()));
+      setUser(authStorage.getUser());
     };
     checkAuth();
     window.addEventListener("auth_updated", checkAuth);
     return () => window.removeEventListener("auth_updated", checkAuth);
   }, []);
+
+  // 1. Chỉ render trên client sau khi đã mount để ngăn chặn hoàn toàn Hydration Mismatch giữa Server và Client
+  if (!mounted) {
+    return null;
+  }
+
+  // 2. Ẩn hoàn toàn thanh điều hướng khách hàng trên trang /staff hoặc khi user là nhân viên (BARISTA/ADMIN)
+  const isStaff = user?.role === "BARISTA" || user?.role === "ADMIN";
+  if (pathname?.startsWith("/staff") || isStaff) {
+    return null;
+  }
+
+  const isLoggedIn = Boolean(user);
 
   // Danh sách các tab điều hướng chuẩn
   const navTabs = [
@@ -76,7 +89,7 @@ export default function BottomNav() {
     {
       name: "Giỏ hàng",
       href: "/cart",
-      badge: displayCount,
+      badge: cartCount,
       icon: (active: boolean) => (
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -138,7 +151,7 @@ export default function BottomNav() {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 mx-auto max-w-md border-t border-slate-200 bg-white/95 backdrop-blur shadow-lg">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 mx-auto max-w-md border-t border-slate-200 bg-white/95 backdrop-blur shadow-lg md:hidden">
       <div className="grid grid-cols-4 py-1.5">
         {navTabs.map((tab) => {
           const isActive =

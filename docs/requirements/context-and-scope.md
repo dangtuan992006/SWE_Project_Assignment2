@@ -52,6 +52,15 @@ Toàn bộ quy trình trải dài từ lúc người dùng chọn sản phẩm t
 - Hệ thống đáp ứng tiêu chuẩn hiệu năng với thời gian phản hồi API dưới 500ms khi truy xuất cơ sở dữ liệu mẫu.
 - Giao diện ứng dụng hoạt động tương thích và ổn định trên các trình duyệt web tiêu chuẩn.
 
-### 3.4. Rủi ro (Risks)
+### 3.4. Ràng buộc (Constraints)
+
+| Phân loại | Nội dung ràng buộc cụ thể | Cơ sở / Tiêu chuẩn áp dụng |
+| :--- | :--- | :--- |
+| **Công nghệ bắt buộc** | - **Frontend:** Next.js (React 19, TypeScript, TailwindCSS) theo định hướng Mobile-first / PWA.<br>- **Backend:** NestJS (TypeScript) theo kiến trúc Modular Monolith và chuẩn RESTful API.<br>- **Cơ sở dữ liệu:** PostgreSQL 16+ kết hợp Prisma ORM và cơ chế Migration tự động.<br>- **Môi trường:** Docker & Docker Compose chạy cục bộ 3 thành phần (web, api, db). | Quy định tại Mục 1.1 và Mục 6 của đề bài Assignment 2 (không được phép thay thế 3 thành phần cốt lõi này). |
+| **Nghiệp vụ thanh toán** | - **100% Cashless:** Chỉ hỗ trợ thanh toán trực tuyến qua Ví điện tử hoặc Thẻ ngân hàng (mô phỏng hoặc sandbox); không hỗ trợ thanh toán tiền mặt hay COD.<br>- **Tính toán an toàn:** Toàn bộ thành tiền, giảm giá voucher và tổng tiền đơn hàng phải tính toán và xác thực tại Backend, không tin cậy dữ liệu client gửi lên.<br>- **Giao dịch Idempotent:** Bắt buộc truyền `Idempotency-Key` (UUID v4) khi tạo đơn và thanh toán để chống trừ tiền/tạo đơn trùng lặp khi mạng bị chập chờn. | Yêu cầu nghiệp vụ cốt lõi của đề tài BrewLite và tiêu chuẩn chống gian lận thương mại điện tử. |
+| **Bảo mật & Hiệu năng** | - **Bảo mật mật khẩu:** Bắt buộc băm mật khẩu bằng thuật toán chuyên dụng (`bcrypt`) với salt trước khi lưu vào CSDL, tuyệt đối không lưu plain text hay ghi log.<br>- **Xác thực JWT:** Bảo vệ các endpoint nhạy cảm (`/orders`, `/payments`, `/orders/me`) qua JWT Bearer Token hợp lệ.<br>- **Hiệu năng API:** Tối thiểu 95% yêu cầu đến các API chính phải phản hồi dưới 500ms đối với dữ liệu mẫu. | Yêu cầu phi chức năng NFR-01, NFR-03, NFR-05 và NFR-07 trong tài liệu SRS. |
+| **Quy trình & Đóng gói** | - **Agile Scrum tuần tự:** Thực hiện dự án qua 2 Sprint tuần tự. Task sau chỉ được nghiệm thu khi tạo phẩm bắt buộc của task trước đã có trên repository với lịch sử commit rõ ràng.<br>- **Chất lượng mã nguồn (DoD):** Mọi đóng góp phải thông qua Pull Request, vượt qua 100% các bước Lint, Unit Test và Build trên GitHub Actions CI trước khi merge. | Quy định tại Mục 1 và Mục 4.4 / 6.3 của đề bài Assignment 2. |
+
+### 3.5. Rủi ro (Risks)
 - Quá trình xử lý giao dịch thanh toán của người dùng bị lỗi khiến hệ thống chuyển đơn hàng sang trạng thái `PAYMENT_FAILED`.
 - Xảy ra tình trạng bán vượt quá số lượng nguyên liệu thực tế (overselling) do sai lệch dữ liệu tồn kho khi nhiều khách hàng thao tác đặt mua hàng cùng một thời điểm.

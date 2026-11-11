@@ -50,7 +50,13 @@ SWE_Project_Assignment2/
 │   │   ├── README.md         # Chi tiết kiến trúc hệ thống
 │   │   └── adr/              # ADR-001 (Monorepo), ADR-002 (Prisma), ADR-003 (State Machine)
 │   ├── deployment.md         # Hướng dẫn chi tiết vận hành & triển khai Production
+│   ├── Huong-dan-cau-hinh-VNPAY.md # Hướng dẫn cấu hình và chạy thử VNPay Sandbox
+│   ├── Kiem-tra-migration-VNPAY.md # Đối chiếu và kiểm tra migration VNPay
 │   └── traceability-matrix.md# Task 8.1: Ma trận truy vết bắt buộc (15 FRs & 19 NFRs)
+├── tests/                    # Task 5.2 & Mục 9: Kịch bản kiểm thử tích hợp E2E
+│   ├── README.md             # Hướng dẫn chi tiết & bảng ánh xạ ca kiểm thử
+│   ├── e2e-checkout.flow.mjs # Runner kiểm thử tự động toàn bộ luồng người dùng
+│   └── e2e-integration.spec.ts # Kịch bản kiểm thử Jest BDD
 ├── .github/workflows/        # Task 4.4 & 5.3: CI/CD Pipelines (ci.yml, cd.yml)
 ├── docker-compose.yml        # Khởi chạy PostgreSQL, Backend API và Frontend Web
 └── README.md                 # Tài liệu hướng dẫn chính của dự án
@@ -146,6 +152,24 @@ npm run dev
 ```
 - Giao diện người dùng chạy tại: `http://localhost:3000`
 
+### 5.5. Chạy Kiểm thử Hệ thống (Unit, Integration & E2E)
+- **Kiểm thử Unit & Integration (326 tests pass 100%):**
+  ```bash
+  cd apps/api
+  pnpm test
+  ```
+- **Kiểm thử E2E nội bộ NestJS:**
+  ```bash
+  cd apps/api
+  pnpm test:e2e
+  ```
+- **Kiểm thử tích hợp luồng E2E độc lập (Black-box Runner):**
+  ```bash
+  node tests/e2e-checkout.flow.mjs
+  # Kiểm thử trực tiếp máy chủ Staging / Production:
+  node tests/e2e-checkout.flow.mjs https://api-brewlite.onrender.com
+  ```
+
 ---
 
 ## 6. Quy trình Làm việc & Quy ước Nhóm (Agile Scrum)
@@ -187,16 +211,101 @@ Một User Story / Task được coi là hoàn thành khi:
 | 8 | Tổng quan Kiến trúc & ADRs | [`docs/architecture/README.md`](docs/architecture/README.md) · [ADR Folder](docs/architecture/adr/) | Task 3.1 |
 | 9 | Sơ đồ Triển khai & Hướng dẫn Vận hành | [`docs/diagrams/deployment.svg`](docs/diagrams/deployment.svg) · [Hướng dẫn](docs/deployment.md) | Task 3.2 |
 | 10 | Ma trận Truy vết bắt buộc (RTM) | [`docs/traceability-matrix.md`](docs/traceability-matrix.md) | Task 8.1 |
+| 11 | Quy trình Rollback sự cố | [Mục 9. Hướng dẫn Rollback](#9-hướng-dẫn-rollback-khi-gặp-sự-cố-rollback-procedures) | Task 5.4 · Mục 9.1 |
+| 12 | Hướng dẫn cấu hình & kiểm thử VNPay Sandbox | [`docs/Huong-dan-cau-hinh-VNPAY.md`](docs/Huong-dan-cau-hinh-VNPAY.md) | Kỹ thuật thanh toán |
+| 13 | Đối chiếu & kiểm tra migration VNPay | [`docs/Kiem-tra-migration-VNPAY.md`](docs/Kiem-tra-migration-VNPAY.md) | Quản trị cơ sở dữ liệu |
+| 14 | Nhật ký phát hành phiên bản (Release Notes) | [`docs/release-notes.md`](docs/release-notes.md) | Task 5.4 · Mục 9.1 |
+| 15 | Minh chứng thực nghiệm CI Pipeline | [`docs/ci-evidence.md`](docs/ci-evidence.md) | Task 4.4 |
+| 16 | Báo cáo Sprint Review & Retrospective | [`docs/sprint-review-retrospective.md`](docs/sprint-review-retrospective.md) | Task 4.3 · Task 5.4 |
 
 ---
 
 ## 8. Checklist Nghiệm thu Đồ án (Assignment 2)
 
-- [x] **Tài liệu Yêu cầu:** SRS rút gọn, Context & Scope, Đặc tả use-case trọng tâm.
-- [x] **Sơ đồ Thiết kế UML:** Đầy đủ Activity, Sequence (5 lifelines), Class (Domain) và Deployment.
-- [x] **Kiến trúc & ADR:** Báo cáo kiến trúc Modular Monolith, 03 bản ADR chính thức.
-- [x] **Truy vết Yêu cầu:** Ma trận truy vết RTM phủ 100% 15 FRs và 19 NFRs.
-- [x] **Cấu trúc Monorepo:** Tách biệt `apps/web/`, `apps/api/`, `docs/`.
-- [x] **Mã nguồn MVP Sprint 1:** Triển khai API Menu và giao diện Web (Task 4.3).
-- [x] **Tự động hóa CI/CD:** Cấu hình GitHub Actions pipeline (Task 4.4 & Task 5.3).
+- [x] **Tài liệu Yêu cầu:** SRS rút gọn, Context & Scope (kèm ràng buộc), Đặc tả use-case trọng tâm.
+- [x] **Sơ đồ Thiết kế UML:** Đầy đủ Activity, Sequence (5 lifelines), Class (Domain) và Deployment (CI & Registry).
+- [x] **Kiến trúc & ADR:** Báo cáo kiến trúc Modular Monolith, 03 bản ADR chính thức (đầy đủ đối soát VNPay).
+- [x] **Truy vết Yêu cầu:** Ma trận truy vết RTM phủ 100% 16 FRs và 20 NFRs với mã test cụ thể.
+- [x] **Cấu trúc Monorepo:** Tách biệt `apps/web/`, `apps/api/`, `docs/`, `tests/`.
+- [x] **Chuẩn Mobile-first & PWA:** Thiết kế giao diện di động, cấu hình `apps/web/app/manifest.ts`.
+- [x] **Mã nguồn MVP Sprint 1 & Sprint 2:** Triển khai API Menu, Đặt hàng, Thanh toán và giao diện Web (Task 4.3 & 5.1).
+- [x] **Kiểm thử Hệ thống:** 326 bài Unit/Integration test API + 28 tests Web pass 100% và kịch bản E2E luồng người dùng (Task 5.2).
+- [x] **Tự động hóa CI/CD:** GitHub Actions CI (Quality Gate) & CD 4 giai đoạn chuẩn (Task 4.4 & Task 5.3).
+- [x] **Minh chứng Thực nghiệm CI:** Nhật ký kiểm soát chất lượng chặn PR lỗi và cho phép merge khi pass (Task 4.4).
+- [x] **Release Notes & Rollback:** Nhật ký phát hành `v1.0.0` & `v2.0.0`, tài liệu hướng dẫn vận hành và rollback 4 kịch bản (Task 5.4).
+- [x] **Sprint Review & Retrospective:** Biên bản họp nghiệm thu và đánh giá cải tiến cho cả Sprint 1 & Sprint 2.
 - [ ] **Triển khai Production:** Triển khai thực tế trên Cloud PaaS (Task 5.4).
+
+---
+
+## 9. Hướng dẫn Rollback khi Gặp Sự Cố (Rollback Procedures)
+
+Theo quy định tại **Task 5.4 và Mục 9.1** của Assignment 2, hệ thống BrewLite thiết lập quy trình rollback chuẩn mực gồm các kịch bản đối phó khi bản triển khai Production gặp sự cố kỹ thuật:
+
+### 9.1. Tiêu chí Kích hoạt Rollback (Triggers)
+Kích hoạt quy trình rollback khẩn cấp khi phát hiện một trong các dấu hiệu sau:
+- Endpoint kiểm tra sức khỏe `GET /health` trả về mã lỗi HTTP 5xx hoặc không phản hồi quá 10 giây.
+- Tỷ lệ lỗi 5xx trên toàn hệ thống vượt quá 5% lưu lượng trong 5 phút đầu sau khi deploy.
+- Luồng nghiệp vụ cốt lõi bị gián đoạn: Khách hàng không thể duyệt menu, giỏ hàng không tính được tiền, hoặc không tạo được đơn hàng / thanh toán.
+
+### 9.2. Kịch bản 1: Rollback Tức Thời trên Nền Tảng Cloud PaaS (Zero Downtime)
+- **Frontend Web (Vercel):**
+  1. Truy cập **Vercel Dashboard** $\rightarrow$ chọn Project `brewlite-web` $\rightarrow$ thẻ **Deployments**.
+  2. Xác định bản deploy ổn định liền kề trước đó (Healthy status).
+  3. Nhấn vào biểu tượng `...` (Options) $\rightarrow$ Chọn **Instant Rollback**. Vercel sẽ tự động điều hướng lưu lượng DNS về phiên bản ổn định ngay lập tức trong vài giây.
+- **Backend API (Render / Railway):**
+  1. Truy cập **Render Dashboard** $\rightarrow$ chọn Service `brewlite-api` $\rightarrow$ thẻ **Events / History**.
+  2. Chọn bản deploy ổn định trước đó $\rightarrow$ Chọn **Rollback to this deploy**.
+  3. Hoặc vào mục **Settings** $\rightarrow$ cập nhật lại tham số `Commit SHA` hoặc Docker Tag trỏ về image ổn định gần nhất.
+
+### 9.3. Kịch bản 2: Rollback Docker Container (Môi trường Local / VPS)
+Nếu chạy ứng dụng qua Docker Compose hoặc VPS:
+```bash
+# 1. Dừng cụm container đang bị lỗi
+docker compose down
+
+# 2. Khôi phục tag image của bản build ổn định liền trước trong docker-compose.yml
+# (thay thế tag :latest bằng commit SHA ổn định trước đó)
+docker compose pull
+docker compose up -d --remove-orphans
+
+# 3. Xác thực kiểm tra sức khỏe container
+docker compose ps
+curl -f http://localhost:8080/health
+```
+
+### 9.4. Kịch bản 3: Hoàn tác Mã nguồn bằng Git & Kích hoạt lại CD Pipeline
+Tuyệt đối không sử dụng `git push --force` trên nhánh được bảo vệ (`main`). Sử dụng lệnh `git revert` tạo commit hoàn tác an toàn:
+```bash
+# 1. Chuyển về nhánh chính và đồng bộ mới nhất
+git checkout main
+git pull origin main
+
+# 2. Tạo commit hoàn tác commit gây lỗi (thay <COMMIT_SHA_LỖI> bằng hash commit lỗi)
+git revert <COMMIT_SHA_LỖI> --no-edit -m "[Fix]: hoàn tác commit lỗi và kích hoạt quy trình rollback tự động"
+
+# 3. Đẩy commit lên GitHub để kích hoạt CD Pipeline tự động đóng gói và triển khai lại
+git push origin main
+```
+
+### 9.5. Kịch bản 4: Xử lý Cơ sở Dữ liệu & Prisma Migration (Database Safety)
+Tuân thủ nguyên tắc thiết kế mở rộng không phá vỡ tính tương thích ngược (*Expand/Contract Pattern* theo ADR-002):
+- Nếu bản migration mới bị lỗi trong lúc chạy `prisma migrate deploy`: Prisma tự động rollback giao dịch (atomic transaction).
+- Nếu cần can thiệp đánh dấu trạng thái migration trong trường hợp khẩn cấp:
+  ```bash
+  cd apps/api
+  # Đánh dấu trạng thái migration lỗi đã được giải quyết
+  npx prisma migrate resolve --rolled-back "<tên_migration_lỗi>"
+  ```
+- Nếu dữ liệu bị sai lệch, thực hiện khôi phục từ bản snapshot sao lưu định kỳ:
+  ```bash
+  # Khôi phục database từ tệp sao lưu trước khi deploy
+  docker exec -i brewlite-postgres psql -U postgres -d brewlite < backups/backup_pre_deploy.sql
+  ```
+
+### 9.6. Xác nhận Sau Rollback (Post-Rollback Verification)
+Sau khi hoàn tất rollback, bắt buộc chạy kiểm thử khói để xác nhận hệ thống đã hồi phục:
+```bash
+# Chạy runner kiểm thử toàn diện luồng end-to-end
+node tests/e2e-checkout.flow.mjs https://api-brewlite.onrender.com
+```

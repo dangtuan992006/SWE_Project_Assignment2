@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
     '192.168.50.141',
     'localhost',
     '127.0.0.1',
+    ...(process.env.DEV_TUNNEL_HOST?.trim() ? [process.env.DEV_TUNNEL_HOST.trim()] : []),
   ],
   experimental: {
     agentFeedback: true,
