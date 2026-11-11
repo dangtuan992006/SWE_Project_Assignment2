@@ -50,6 +50,8 @@ SWE_Project_Assignment2/
 │   │   ├── README.md         # Chi tiết kiến trúc hệ thống
 │   │   └── adr/              # ADR-001 (Monorepo), ADR-002 (Prisma), ADR-003 (State Machine)
 │   ├── deployment.md         # Hướng dẫn chi tiết vận hành & triển khai Production
+│   ├── Huong-dan-cau-hinh-VNPAY.md # Hướng dẫn cấu hình và chạy thử VNPay Sandbox
+│   ├── Kiem-tra-migration-VNPAY.md # Đối chiếu và kiểm tra migration VNPay
 │   └── traceability-matrix.md# Task 8.1: Ma trận truy vết bắt buộc (15 FRs & 19 NFRs)
 ├── tests/                    # Task 5.2 & Mục 9: Kịch bản kiểm thử tích hợp E2E
 │   ├── README.md             # Hướng dẫn chi tiết & bảng ánh xạ ca kiểm thử
@@ -210,6 +212,8 @@ Một User Story / Task được coi là hoàn thành khi:
 | 9 | Sơ đồ Triển khai & Hướng dẫn Vận hành | [`docs/diagrams/deployment.svg`](docs/diagrams/deployment.svg) · [Hướng dẫn](docs/deployment.md) | Task 3.2 |
 | 10 | Ma trận Truy vết bắt buộc (RTM) | [`docs/traceability-matrix.md`](docs/traceability-matrix.md) | Task 8.1 |
 | 11 | Quy trình Rollback sự cố | [Mục 9. Hướng dẫn Rollback](#9-hướng-dẫn-rollback-khi-gặp-sự-cố-rollback-procedures) | Task 5.4 · Mục 9.1 |
+| 12 | Hướng dẫn cấu hình & kiểm thử VNPay Sandbox | [`docs/Huong-dan-cau-hinh-VNPAY.md`](docs/Huong-dan-cau-hinh-VNPAY.md) | Kỹ thuật thanh toán |
+| 13 | Đối chiếu & kiểm tra migration VNPay | [`docs/Kiem-tra-migration-VNPAY.md`](docs/Kiem-tra-migration-VNPAY.md) | Quản trị cơ sở dữ liệu |
 
 ---
 
