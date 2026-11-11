@@ -214,20 +214,26 @@ Một User Story / Task được coi là hoàn thành khi:
 | 11 | Quy trình Rollback sự cố | [Mục 9. Hướng dẫn Rollback](#9-hướng-dẫn-rollback-khi-gặp-sự-cố-rollback-procedures) | Task 5.4 · Mục 9.1 |
 | 12 | Hướng dẫn cấu hình & kiểm thử VNPay Sandbox | [`docs/Huong-dan-cau-hinh-VNPAY.md`](docs/Huong-dan-cau-hinh-VNPAY.md) | Kỹ thuật thanh toán |
 | 13 | Đối chiếu & kiểm tra migration VNPay | [`docs/Kiem-tra-migration-VNPAY.md`](docs/Kiem-tra-migration-VNPAY.md) | Quản trị cơ sở dữ liệu |
+| 14 | Nhật ký phát hành phiên bản (Release Notes) | [`docs/release-notes.md`](docs/release-notes.md) | Task 5.4 · Mục 9.1 |
+| 15 | Minh chứng thực nghiệm CI Pipeline | [`docs/ci-evidence.md`](docs/ci-evidence.md) | Task 4.4 |
+| 16 | Báo cáo Sprint Review & Retrospective | [`docs/sprint-review-retrospective.md`](docs/sprint-review-retrospective.md) | Task 4.3 · Task 5.4 |
 
 ---
 
 ## 8. Checklist Nghiệm thu Đồ án (Assignment 2)
 
-- [x] **Tài liệu Yêu cầu:** SRS rút gọn, Context & Scope, Đặc tả use-case trọng tâm.
-- [x] **Sơ đồ Thiết kế UML:** Đầy đủ Activity, Sequence (5 lifelines), Class (Domain) và Deployment.
-- [x] **Kiến trúc & ADR:** Báo cáo kiến trúc Modular Monolith, 03 bản ADR chính thức.
-- [x] **Truy vết Yêu cầu:** Ma trận truy vết RTM phủ 100% 15 FRs và 19 NFRs.
+- [x] **Tài liệu Yêu cầu:** SRS rút gọn, Context & Scope (kèm ràng buộc), Đặc tả use-case trọng tâm.
+- [x] **Sơ đồ Thiết kế UML:** Đầy đủ Activity, Sequence (5 lifelines), Class (Domain) và Deployment (CI & Registry).
+- [x] **Kiến trúc & ADR:** Báo cáo kiến trúc Modular Monolith, 03 bản ADR chính thức (đầy đủ đối soát VNPay).
+- [x] **Truy vết Yêu cầu:** Ma trận truy vết RTM phủ 100% 16 FRs và 20 NFRs với mã test cụ thể.
 - [x] **Cấu trúc Monorepo:** Tách biệt `apps/web/`, `apps/api/`, `docs/`, `tests/`.
+- [x] **Chuẩn Mobile-first & PWA:** Thiết kế giao diện di động, cấu hình `apps/web/app/manifest.ts`.
 - [x] **Mã nguồn MVP Sprint 1 & Sprint 2:** Triển khai API Menu, Đặt hàng, Thanh toán và giao diện Web (Task 4.3 & 5.1).
-- [x] **Kiểm thử Hệ thống:** 326 bài Unit/Integration test pass 100% và kịch bản E2E luồng người dùng (Task 5.2).
-- [x] **Tự động hóa CI/CD:** Cấu hình GitHub Actions CI & CD 4 giai đoạn chuẩn (Task 4.4 & Task 5.3).
-- [x] **Hướng dẫn Vận hành & Rollback:** Tài liệu hướng dẫn deploy, giám sát và rollback sự cố (Task 5.4).
+- [x] **Kiểm thử Hệ thống:** 326 bài Unit/Integration test API + 28 tests Web pass 100% và kịch bản E2E luồng người dùng (Task 5.2).
+- [x] **Tự động hóa CI/CD:** GitHub Actions CI (Quality Gate) & CD 4 giai đoạn chuẩn (Task 4.4 & Task 5.3).
+- [x] **Minh chứng Thực nghiệm CI:** Nhật ký kiểm soát chất lượng chặn PR lỗi và cho phép merge khi pass (Task 4.4).
+- [x] **Release Notes & Rollback:** Nhật ký phát hành `v1.0.0` & `v2.0.0`, tài liệu hướng dẫn vận hành và rollback 4 kịch bản (Task 5.4).
+- [x] **Sprint Review & Retrospective:** Biên bản họp nghiệm thu và đánh giá cải tiến cho cả Sprint 1 & Sprint 2.
 - [ ] **Triển khai Production:** Triển khai thực tế trên Cloud PaaS (Task 5.4).
 
 ---
