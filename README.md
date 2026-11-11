@@ -234,7 +234,11 @@ Một User Story / Task được coi là hoàn thành khi:
 - [x] **Minh chứng Thực nghiệm CI:** Nhật ký kiểm soát chất lượng chặn PR lỗi và cho phép merge khi pass (Task 4.4).
 - [x] **Release Notes & Rollback:** Nhật ký phát hành `v1.0.0` & `v2.0.0`, tài liệu hướng dẫn vận hành và rollback 4 kịch bản (Task 5.4).
 - [x] **Sprint Review & Retrospective:** Biên bản họp nghiệm thu và đánh giá cải tiến cho cả Sprint 1 & Sprint 2.
-- [ ] **Triển khai Production:** Triển khai thực tế trên Cloud PaaS (Task 5.4).
+- [x] **Triển khai Production:** Đã triển khai thành công Cloud PaaS (Task 5.4).
+  - **Frontend Live (Vercel):** [https://swe-project-assignment2.vercel.app](https://swe-project-assignment2.vercel.app)
+  - **Backend Live (Render):** [https://brewlite-api-2tuk.onrender.com](https://brewlite-api-2tuk.onrender.com)
+  - **Swagger API Docs Live:** [https://brewlite-api-2tuk.onrender.com/swagger](https://brewlite-api-2tuk.onrender.com/swagger)
+  - **Health Check Endpoint:** [https://brewlite-api-2tuk.onrender.com/health](https://brewlite-api-2tuk.onrender.com/health)
 
 ---
 
