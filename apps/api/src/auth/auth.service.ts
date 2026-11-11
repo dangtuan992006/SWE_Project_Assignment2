@@ -165,6 +165,27 @@ export class AuthService {
       },
     });
 
+    // Đồng bộ người cập nhật trong Lịch sử thay đổi kho nguyên liệu nếu là Nhân viên/Admin đổi tên
+    if (dto.fullName && dto.fullName.trim() && (user.role === 'BARISTA' || user.role === 'ADMIN')) {
+      const newName = dto.fullName.trim();
+      const targets = [user.email];
+      if (user.fullName) targets.push(user.fullName);
+      try {
+        if ((this.prisma as any).ingredientAuditLog) {
+          await (this.prisma as any).ingredientAuditLog.updateMany({
+            where: {
+              performedBy: { in: targets },
+            },
+            data: {
+              performedBy: newName,
+            },
+          });
+        }
+      } catch {
+        // Không chặn cập nhật hồ sơ nếu bảng log chưa sẵn sàng
+      }
+    }
+
     return updated;
   }
 }

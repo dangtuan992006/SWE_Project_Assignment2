@@ -39,6 +39,14 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
+  private async resolvePerformer(user: any): Promise<string> {
+    if (!user) return 'Nhân viên Pha chế';
+    if (user.id) {
+      return this.inventoryService.getStaffPerformerName(user.id);
+    }
+    return user.fullName || user.email || 'Nhân viên Pha chế';
+  }
+
   @Get('ingredients')
   @Roles(Role.BARISTA, Role.ADMIN)
   @ApiOperation({
@@ -67,7 +75,7 @@ export class InventoryController {
     @Body() dto: CreateIngredientDto,
     @CurrentUser() user: any,
   ) {
-    const performedBy = user?.fullName || user?.email || 'Nhân viên Pha chế';
+    const performedBy = await this.resolvePerformer(user);
     return this.inventoryService.createIngredient(dto, performedBy);
   }
 
@@ -85,7 +93,7 @@ export class InventoryController {
     @Body() dto: UpdateIngredientDto,
     @CurrentUser() user: any,
   ) {
-    const performedBy = user?.fullName || user?.email || 'Nhân viên Pha chế';
+    const performedBy = await this.resolvePerformer(user);
     return this.inventoryService.updateIngredient(id, dto, performedBy);
   }
 
@@ -102,7 +110,7 @@ export class InventoryController {
     @Param('id') id: string,
     @CurrentUser() user: any,
   ) {
-    const performedBy = user?.fullName || user?.email || 'Nhân viên Pha chế';
+    const performedBy = await this.resolvePerformer(user);
     return this.inventoryService.deleteIngredient(id, performedBy);
   }
 
@@ -120,7 +128,7 @@ export class InventoryController {
     @Body() dto: UpdateIngredientStockDto,
     @CurrentUser() user: any,
   ) {
-    const performedBy = user?.fullName || user?.email || 'Nhân viên Pha chế';
+    const performedBy = await this.resolvePerformer(user);
     return this.inventoryService.updateIngredientStock(
       id,
       dto.quantity,

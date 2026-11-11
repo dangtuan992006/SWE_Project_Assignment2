@@ -204,7 +204,7 @@ export class OrdersService {
   }
 
   /** Cập nhật trạng thái đơn hàng (Dành cho Barista/Admin chuyển trạng thái pha chế hoặc hủy) */
-  async updateStatus(orderId: string, targetStatus: OrderStatus) {
+  async updateStatus(orderId: string, targetStatus: OrderStatus, performedById?: string) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: orderWithItems.include,
@@ -223,11 +223,23 @@ export class OrdersService {
     });
 
     if (targetStatus === OrderStatus.PREPARING && this.inventoryService) {
+      let performerName = 'Nhân viên Pha chế';
+      if (performedById) {
+        try {
+          const staffUser = await this.prisma.user.findUnique({
+            where: { id: performedById },
+            select: { fullName: true, email: true },
+          });
+          performerName = staffUser?.fullName || staffUser?.email || performerName;
+        } catch {
+          // Fallback nếu có lỗi
+        }
+      }
       try {
         await this.inventoryService.deductIngredientsForOrder(
           this.prisma,
           orderId,
-          'Nhân viên Pha chế',
+          performerName,
         );
       } catch (_err) {
         // Không chặn cập nhật đơn hàng nếu trừ nguyên liệu gặp lỗi
