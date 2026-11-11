@@ -51,6 +51,10 @@ SWE_Project_Assignment2/
 │   │   └── adr/              # ADR-001 (Monorepo), ADR-002 (Prisma), ADR-003 (State Machine)
 │   ├── deployment.md         # Hướng dẫn chi tiết vận hành & triển khai Production
 │   └── traceability-matrix.md# Task 8.1: Ma trận truy vết bắt buộc (15 FRs & 19 NFRs)
+├── tests/                    # Task 5.2 & Mục 9: Kịch bản kiểm thử tích hợp E2E
+│   ├── README.md             # Hướng dẫn chi tiết & bảng ánh xạ ca kiểm thử
+│   ├── e2e-checkout.flow.mjs # Runner kiểm thử tự động toàn bộ luồng người dùng
+│   └── e2e-integration.spec.ts # Kịch bản kiểm thử Jest BDD
 ├── .github/workflows/        # Task 4.4 & 5.3: CI/CD Pipelines (ci.yml, cd.yml)
 ├── docker-compose.yml        # Khởi chạy PostgreSQL, Backend API và Frontend Web
 └── README.md                 # Tài liệu hướng dẫn chính của dự án
@@ -145,6 +149,24 @@ copy .env.example .env    # Trên Linux/macOS: cp .env.example .env
 npm run dev
 ```
 - Giao diện người dùng chạy tại: `http://localhost:3000`
+
+### 5.5. Chạy Kiểm thử Hệ thống (Unit, Integration & E2E)
+- **Kiểm thử Unit & Integration (326 tests pass 100%):**
+  ```bash
+  cd apps/api
+  pnpm test
+  ```
+- **Kiểm thử E2E nội bộ NestJS:**
+  ```bash
+  cd apps/api
+  pnpm test:e2e
+  ```
+- **Kiểm thử tích hợp luồng E2E độc lập (Black-box Runner):**
+  ```bash
+  node tests/e2e-checkout.flow.mjs
+  # Kiểm thử trực tiếp máy chủ Staging / Production:
+  node tests/e2e-checkout.flow.mjs https://api-brewlite.onrender.com
+  ```
 
 ---
 
