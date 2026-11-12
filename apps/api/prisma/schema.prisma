@@ -115,6 +115,7 @@ model Order {
   payments            Payment[]
   loyaltyTransactions LoyaltyTransaction[]
   refundRequest       RefundRequest?
+  paidIngredientDeductions Json? @map("paid_ingredient_deductions")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -227,6 +228,8 @@ model Voucher {
 enum TransactionType {
   EARN
   REDEEM
+  REFUND
+  REFUND_CREDIT
 }
 
 model LoyaltyTransaction {
@@ -286,6 +289,26 @@ enum RefundRequestStatus {
   PENDING
   APPROVED
   REJECTED
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  UNKNOWN
+}
+
+model RefundAttempt {
+  id String @id @default(uuid())
+  refundId String @map("refund_id")
+  refund RefundRequest @relation(fields: [refundId], references: [id])
+  status RefundRequestStatus @default(PROCESSING)
+  processedBy String @map("processed_by")
+  startedAt DateTime @default(now()) @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  gatewayCode String? @map("gateway_code")
+  gatewayReference String? @map("gateway_reference")
+  message String?
+  evidence String?
+  @@index([refundId, startedAt])
+  @@map("refund_attempts")
 }
 
 model RefundRequest {
@@ -299,6 +322,14 @@ model RefundRequest {
   amount      Decimal             @db.Decimal(10, 2)
   reason      String?
   status      RefundRequestStatus @default(PENDING)
+  refundMethod String @default("POINTS") @map("refund_method")
+  refundPoints Int? @map("refund_points")
+  vndPerPoint Int? @map("vnd_per_point")
+  paymentId   String? @unique @map("payment_id")
+  provider    String?
+  message     String?
+  completedAt DateTime? @map("completed_at")
+  attempts    RefundAttempt[]
 
   processedBy String?             @map("processed_by")
   processedAt DateTime?           @map("processed_at")
@@ -316,6 +347,7 @@ enum IngredientLogAction {
   UPDATE
   DELETE
   ORDER_DEDUCT
+  ORDER_REFUND
 }
 
 model IngredientAuditLog {

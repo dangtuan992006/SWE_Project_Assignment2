@@ -1,0 +1,1 @@
+ALTER TYPE "TransactionType" ADD VALUE 'REFUND_CREDIT';

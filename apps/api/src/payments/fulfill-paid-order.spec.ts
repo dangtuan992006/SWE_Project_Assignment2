@@ -5,6 +5,7 @@ import { fulfillPaidOrderInTransaction } from './fulfill-paid-order';
 describe('Hoàn tất thanh toán dùng chung Mock/VNPay', () => {
   function setup() {
     const tx = {
+    order: { update: jest.fn() },
       $queryRaw: jest.fn().mockResolvedValue([]),
       product: {
         findUnique: jest.fn().mockResolvedValue({ stock: 10, version: 3, isAvailable: true }),

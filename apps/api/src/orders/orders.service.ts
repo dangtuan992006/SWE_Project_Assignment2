@@ -17,6 +17,10 @@ import {
   ProductForOrder,
 } from './order-lines';
 import { InventoryService } from '../inventory/inventory.service';
+import {
+  RefundsService,
+  ACTIVE_REFUND_STATUSES,
+} from '../refunds/refunds.service';
 
 const orderWithItems = Prisma.validator<Prisma.OrderDefaultArgs>()({
   include: {
@@ -39,6 +43,7 @@ export class OrdersService {
     private readonly promotionsService?: PromotionsService,
     private readonly expirationService?: OrderExpirationService,
     private readonly inventoryService?: InventoryService,
+    private readonly refundsService?: RefundsService,
   ) {}
   async create(
     userId: string,
@@ -48,7 +53,9 @@ export class OrdersService {
     const existing = await this.findByKey(userId, checkoutKey);
     if (existing) {
       await this.expirationService?.expireOrder(existing.id, userId);
-      const current = this.expirationService ? await this.findByKey(userId, checkoutKey) : existing;
+      const current = this.expirationService
+        ? await this.findByKey(userId, checkoutKey)
+        : existing;
       return { replayed: true, order: this.toResponse(current!) };
     }
 
@@ -143,7 +150,7 @@ export class OrdersService {
 
   /** Định dạng phản hồi: tiền trả về dạng chuỗi 2 chữ số thập phân, giống module Products. */
   toResponse(order: OrderWithItems) {
-    const refund = (order as any).refundRequest;
+    const refund = order.refundRequest;
     return {
       id: order.id,
       orderId: order.id,
@@ -161,9 +168,15 @@ export class OrdersService {
             id: refund.id,
             status: refund.status,
             amount: Number(refund.amount).toFixed(2),
+            refundMethod: refund.refundMethod,
+            refundPoints: refund.refundPoints,
+            vndPerPoint: refund.vndPerPoint,
             reason: refund.reason,
             processedBy: refund.processedBy,
             processedAt: refund.processedAt,
+            completedAt: refund.completedAt,
+            provider: refund.provider,
+            message: refund.message,
           }
         : null,
       items: order.items.map((item) => ({
@@ -205,36 +218,45 @@ export class OrdersService {
 
   /** Cập nhật trạng thái đơn hàng (Dành cho Barista/Admin chuyển trạng thái pha chế hoặc hủy) */
   async updateStatus(orderId: string, targetStatus: OrderStatus) {
-    const order = await this.prisma.order.findUnique({
-      where: { id: orderId },
-      include: orderWithItems.include,
-    });
-
-    if (!order) {
-      throw new NotFoundException('Không tìm thấy đơn hàng cần cập nhật.');
-    }
-
-    assertOrderTransition(order.status, targetStatus);
-
-    const updated = await this.prisma.order.update({
-      where: { id: orderId },
-      data: { status: targetStatus },
-      include: orderWithItems.include,
-    });
-
-    if (targetStatus === OrderStatus.PREPARING && this.inventoryService) {
-      try {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "orders" WHERE "id" = ${orderId} FOR UPDATE`;
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: orderWithItems.include,
+      });
+      if (!order)
+        throw new NotFoundException('Không tìm thấy đơn hàng cần cập nhật.');
+      if (
+        order.refundRequest &&
+        ACTIVE_REFUND_STATUSES.includes(order.refundRequest.status)
+      ) {
+        throw new ConflictException(
+          'Đơn đang có yêu cầu hoàn tiền. Hãy xử lý yêu cầu trước khi pha chế.',
+        );
+      }
+      if (order.status === 'PAID' && targetStatus === 'CANCELLED')
+        throw new ConflictException(
+          'Đơn đã thanh toán phải hủy qua luồng hoàn tiền.',
+        );
+      assertOrderTransition(order.status, targetStatus);
+      const updated = await tx.order.update({
+        where: { id: orderId },
+        data: { status: targetStatus },
+        include: orderWithItems.include,
+      });
+      if (
+        targetStatus === OrderStatus.PREPARING &&
+        order.paidIngredientDeductions == null &&
+        this.inventoryService
+      ) {
         await this.inventoryService.deductIngredientsForOrder(
-          this.prisma,
+          tx,
           orderId,
           'Nhân viên Pha chế',
         );
-      } catch (_err) {
-        // Không chặn cập nhật đơn hàng nếu trừ nguyên liệu gặp lỗi
       }
-    }
-
-    return this.toResponse(updated);
+      return this.toResponse(updated);
+    });
   }
 
   /**
@@ -272,9 +294,20 @@ export class OrdersService {
       order.status === OrderStatus.PENDING ||
       order.status === OrderStatus.PAYMENT_FAILED
     ) {
-      const updated = await this.prisma.order.update({
-        where: { id: orderId },
+      const changed = await this.prisma.order.updateMany({
+        where: {
+          id: orderId,
+          userId,
+          status: { in: [OrderStatus.PENDING, OrderStatus.PAYMENT_FAILED] },
+        },
         data: { status: OrderStatus.CANCELLED },
+      });
+      if (changed.count !== 1)
+        throw new ConflictException(
+          'Đơn đã thay đổi trạng thái. Vui lòng tải lại.',
+        );
+      const updated = await this.prisma.order.findUniqueOrThrow({
+        where: { id: orderId },
         include: orderWithItems.include,
       });
 
@@ -286,48 +319,22 @@ export class OrdersService {
       };
     }
 
-    // Nếu đơn đã thanh toán (PAID): Tạo yêu cầu hoàn tiền cho Staff duyệt
     if (order.status === OrderStatus.PAID) {
-      const existingRefund = await this.prisma.refundRequest.findUnique({
-        where: { orderId },
-      });
-
-      if (existingRefund && existingRefund.status === 'PENDING') {
-        return {
-          success: true,
-          message: 'Yêu cầu hoàn tiền của bạn đang chờ nhân viên quầy xử lý.',
-          isRefundPending: true,
-          status: OrderStatus.PAID,
-          order: this.toResponse(order),
-        };
-      }
-
-      await this.prisma.refundRequest.upsert({
-        where: { orderId },
-        create: {
-          orderId,
-          userId,
-          amount: order.totalAmount,
-          reason: reason || 'Khách hàng hủy đơn sau khi thanh toán',
-          status: 'PENDING',
-        },
-        update: {
-          reason: reason || 'Khách hàng hủy đơn sau khi thanh toán',
-          status: 'PENDING',
-        },
-      });
-
-      const updated = await this.prisma.order.findUnique({
+      if (!this.refundsService)
+        throw new ServiceUnavailableException(
+          'Chưa khởi tạo dịch vụ hoàn tiền.',
+        );
+      const refund = await this.refundsService.request(userId, orderId, reason);
+      const updated = await this.prisma.order.findUniqueOrThrow({
         where: { id: orderId },
         include: orderWithItems.include,
       });
-
       return {
         success: true,
-        message: 'Đã gửi yêu cầu hủy đơn và hoàn tiền đến nhân viên quầy.',
+        message: refund.message,
         isRefundPending: true,
-        status: OrderStatus.PAID,
-        order: this.toResponse(updated!),
+        status: updated.status,
+        order: this.toResponse(updated),
       };
     }
 
@@ -367,42 +374,42 @@ export class OrdersService {
    * Nhân viên chấp nhận duyệt hoàn tiền cho đơn hàng
    */
   async approveRefund(orderId: string, staffEmail: string) {
-    const refund = await this.prisma.refundRequest.findUnique({
-      where: { orderId },
-      include: { order: true },
+    if (!this.refundsService)
+      throw new ServiceUnavailableException('Chưa khởi tạo dịch vụ hoàn tiền.');
+    const refund = await this.refundsService.approve(orderId, staffEmail);
+    const updated = await this.prisma.order.findUniqueOrThrow({
+      where: { id: orderId },
+      include: orderWithItems.include,
     });
+    return {
+      success: true,
+      message: refund.message,
+      refundRequest: refund,
+      order: this.toResponse(updated),
+    };
+  }
 
-    if (!refund) {
-      throw new NotFoundException('Không tìm thấy yêu cầu hoàn tiền cho đơn hàng này.');
-    }
+  async rejectRefund(orderId: string, staff: string, reason: string) {
+    if (!this.refundsService)
+      throw new ServiceUnavailableException('Chưa khởi tạo dịch vụ hoàn tiền.');
+    const refund = await this.refundsService.reject(orderId, staff, reason);
+    return { success: true, message: refund.message };
+  }
 
-    if (refund.status !== 'PENDING') {
-      throw new ConflictException('Yêu cầu hoàn tiền này đã được xử lý trước đó.');
-    }
-
-    return this.prisma.$transaction(async (tx) => {
-      // 1. Cập nhật RefundRequest
-      await tx.refundRequest.update({
-        where: { orderId },
-        data: {
-          status: 'APPROVED',
-          processedBy: staffEmail,
-          processedAt: new Date(),
-        },
-      });
-
-      // 2. Chuyển trạng thái Order sang CANCELLED
-      const updatedOrder = await tx.order.update({
-        where: { id: orderId },
-        data: { status: OrderStatus.CANCELLED },
-        include: orderWithItems.include,
-      });
-
-      return {
-        success: true,
-        message: 'Đã chấp nhận hoàn tiền và hủy đơn hàng thành công.',
-        order: this.toResponse(updatedOrder),
-      };
-    });
+  async resolveRefund(
+    orderId: string,
+    staff: string,
+    status: 'SUCCEEDED' | 'FAILED',
+    evidence: string,
+  ) {
+    if (!this.refundsService)
+      throw new ServiceUnavailableException('Chưa khởi tạo dịch vụ hoàn tiền.');
+    const refund = await this.refundsService.resolve(
+      orderId,
+      staff,
+      status,
+      evidence,
+    );
+    return { success: true, message: refund.message };
   }
 }

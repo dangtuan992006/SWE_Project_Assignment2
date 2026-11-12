@@ -1,0 +1,5 @@
+ALTER TYPE "RefundRequestStatus" ADD VALUE 'PROCESSING';
+ALTER TYPE "RefundRequestStatus" ADD VALUE 'SUCCEEDED';
+ALTER TYPE "RefundRequestStatus" ADD VALUE 'FAILED';
+ALTER TYPE "RefundRequestStatus" ADD VALUE 'UNKNOWN';
+ALTER TYPE "TransactionType" ADD VALUE 'REFUND';
