@@ -309,3 +309,7 @@ Sau khi hoàn tất rollback, bắt buộc chạy kiểm thử khói để xác 
 # Chạy runner kiểm thử toàn diện luồng end-to-end
 node tests/e2e-checkout.flow.mjs https://api-brewlite.onrender.com
 ```
+
+## Hoàn tiền
+
+Xem [hướng dẫn hoàn bằng điểm](docs/guides/REFUNDS.md) cho tỷ lệ quy đổi, quyền duyệt, kiểm thử và cách xử lý lịch sử hoàn tiền cũ.
