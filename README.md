@@ -295,7 +295,7 @@ Một User Story / Task được coi là hoàn thành khi:
   - `ghcr.io/dangtuan992006/swe_project_assignment2/brewlite-web`
 
 ### 8.2. Video Demo End-to-End
-- **Trạng thái liên kết:** `[Chờ nhóm đính kèm URL Video Demo End-to-End sau khi quay bản phát hành v2.0.0 cuối cùng]`
+- **Liên kết Video Demo (Google Drive):** [demo_brewlite.mp4](https://drive.google.com/file/d/12fDG-yzD5fEU9Z0vBaw2eAi5zGVFJLqj/view?usp=drivesdk)
 - **Kịch bản trình diễn End-to-End (Khách hàng & Staff Portal):**
   1. **Luồng Khách hàng (`CUSTOMER`):** Duyệt menu trên `/` (Vercel) $\rightarrow$ chọn Size & Topping tại `/products/[id]` $\rightarrow$ quản lý giỏ hàng & áp dụng Voucher tại `/cart` $\rightarrow$ thanh toán không tiền mặt qua VNPay Sandbox $\rightarrow$ đối soát thành công tại `/orders/[id]`, kiểm tra lịch sử `/orders` và đổi điểm thưởng Loyalty tại `/UserProfile`.
   2. **Luồng Nhân viên (`/staff` cho `BARISTA`/`ADMIN`):** Tiếp nhận đơn hàng mới, chuyển trạng thái pha chế theo State Machine (`PAID` $\rightarrow$ `PREPARING` $\rightarrow$ `READY` $\rightarrow$ `COMPLETED`), theo dõi trừ kho nguyên liệu tự động (`IngredientAuditLog`) và duyệt yêu cầu hoàn tiền (`RefundRequest`).

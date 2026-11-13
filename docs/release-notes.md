@@ -7,7 +7,7 @@ Tài liệu này ghi nhận lịch sử phát hành các phiên bản phần m�
 
 ## 🚀 Phiên bản v2.0.0 — Sprint 2: Full End-to-End Flow, Staff Portal & Production Delivery
 **Ngày phát hành:** 13/11/2026  
-**Trạng thái Git Tag & Release:** Đợt hoàn thiện cuối trên nhánh `TV1` (chuẩn bị mở PR #3 vào `main`, gắn tag `v2.0.0` và phát hành GitHub Release sau khi merge PR #3).  
+**Trạng thái Git Tag & Release:** Đã phát hành chính thức (`Release v2.0.0`) trên GitHub sau khi merge PR #3 vào `main`.  
 **Trọng tâm Sprint 2:** Hoàn thiện trọn vẹn luồng khách hàng không dùng tiền mặt, mở rộng cổng vận hành Staff Portal (`/staff`) & quản lý kho nguyên liệu, bổ sung khuyến mãi & tích điểm thưởng, chuẩn hóa dây chuyền CI/CD Node 24 + GHCR và bàn giao trên môi trường Production.
 
 ### 1. Tính năng mới & Nâng cấp Nghiệp vụ
@@ -48,6 +48,7 @@ Tài liệu này ghi nhận lịch sử phát hành các phiên bản phần m�
   - Frontend (Vercel): [https://swe-project-assignment2.vercel.app](https://swe-project-assignment2.vercel.app)
   - Backend API (Render): [https://brewlite-api-2tuk.onrender.com](https://brewlite-api-2tuk.onrender.com)
   - Health Check & Swagger: `/health` (HTTP 200), `/swagger`
+- **Video Demo Trực quan (End-to-End):** [demo_brewlite.mp4 (Google Drive)](https://drive.google.com/file/d/12fDG-yzD5fEU9Z0vBaw2eAi5zGVFJLqj/view?usp=drivesdk)
 
 ---
 
