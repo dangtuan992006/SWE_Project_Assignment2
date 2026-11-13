@@ -10,6 +10,7 @@ import { authStorage } from "@/utils/authStorage";
 import { useCartStore } from "@/stores/cartStore";
 import { completePaidCheckout } from "@/utils/vnpayCheckout";
 import ResumeVnpayPayment from "@/components/ResumeVnpayPayment";
+import RefundStatus from "@/components/RefundStatus";
 
 interface RawOrderItem {
   productId: string;
@@ -132,7 +133,7 @@ function OrderDetailContent() {
   const refreshOrder = useRef<(() => void) | null>(null);
   const expiryCheckedFor = useRef<string | null>(null);
 
-  // Trạng thái hủy đơn / yêu cầu hoàn tiền
+  // Trạng thái hủy đơn / yêu cầu hoàn điểm
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [isCancelling, setIsCancelling] = useState(false);
@@ -255,7 +256,7 @@ function OrderDetailContent() {
         if (active) {
           setOrder(normalizedOrder);
           // Return có thể đến trước IPN. Đọc lại DB, không suy ra PAID từ URL.
-          if (normalizedOrder.status === "PENDING" && refreshCount < 10) {
+          if ((normalizedOrder.status === "PENDING" || ["PENDING", "PROCESSING", "UNKNOWN"].includes(normalizedOrder.refundRequest?.status ?? "")) && refreshCount < 20) {
             refreshCount += 1;
             refreshTimer = setTimeout(() => { void loadOrder(false); }, 3000);
           }
@@ -604,55 +605,14 @@ function OrderDetailContent() {
           </div>
         )}
 
-        {/* 2. Nếu đơn PAID: Xử lý yêu cầu hoàn tiền */}
-        {order.status === "PAID" && (
+        {order.refundRequest && <>
+          <RefundStatus refund={order.refundRequest} />
+          <button type="button" onClick={() => refreshOrder.current?.()} className="mt-3 rounded-lg border border-amber-800 px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-50">Cập nhật trạng thái hoàn điểm</button>
+        </>}
+        {order.status === "PAID" && (!order.refundRequest || order.refundRequest.status === "REJECTED") && (
           <div className="mt-3">
-            {order.refundRequest?.status === "PENDING" ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                <div className="flex items-start space-x-2">
-                  <span className="text-lg">⏳</span>
-                  <div>
-                    <p className="font-semibold text-amber-900">
-                      Yêu cầu hoàn tiền đang chờ quầy Staff duyệt xử lý
-                    </p>
-                    <p className="mt-1 text-xs text-amber-700">
-                      Số tiền dự kiến hoàn: {formatMoney(Number(order.refundRequest.amount))}
-                      {order.refundRequest.reason && ` • Lý do: "${order.refundRequest.reason}"`}
-                    </p>
-                    <p className="mt-2 text-[11px] text-amber-800/80">
-                      Nhân viên tại quầy sẽ kiểm tra và xác nhận hoàn tiền cho bạn sớm nhất có thể.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : order.refundRequest?.status === "APPROVED" ? (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-                <p className="font-semibold text-emerald-900">✓ Yêu cầu hoàn tiền đã được chấp thuận</p>
-                <p className="mt-1 text-xs text-emerald-700">
-                  Số tiền {formatMoney(Number(order.refundRequest.amount))} đã được ghi nhận hoàn trả.
-                </p>
-              </div>
-            ) : order.refundRequest?.status === "REJECTED" ? (
-              <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-                <p className="font-semibold text-red-900">✕ Yêu cầu hoàn tiền không được chấp thuận</p>
-                <p className="mt-1 text-xs text-red-700">
-                  Vui lòng liên hệ trực tiếp nhân viên tại quầy để được hỗ trợ.
-                </p>
-              </div>
-            ) : (
-              <div>
-                <p className="text-xs text-gray-500 mb-3">
-                  Đơn hàng đã thanh toán. Nếu có sự cố ngoài ý muốn, bạn có thể gửi yêu cầu hủy và hoàn tiền đến nhân viên quầy.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setIsCancelModalOpen(true)}
-                  className="w-full rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-100"
-                >
-                  Yêu cầu hủy đơn & Hoàn tiền
-                </button>
-              </div>
-            )}
+            <p className="mb-3 text-sm text-gray-600">Bạn có thể yêu cầu hoàn bằng điểm trước khi pha chế: 1 điểm = 1.000đ, phần lẻ làm tròn lên. Không hoàn về ngân hàng; điểm dùng đổi voucher trong Tài khoản.</p>
+            <button type="button" onClick={() => setIsCancelModalOpen(true)} className="w-full rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100">Yêu cầu hủy đơn và hoàn điểm</button>
           </div>
         )}
 
@@ -689,12 +649,12 @@ function OrderDetailContent() {
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
             <h3 className="text-lg font-bold text-gray-900">
               {order.status === "PAID"
-                ? "Gửi yêu cầu hủy đơn & hoàn tiền"
+                ? "Gửi yêu cầu hủy đơn & hoàn điểm"
                 : "Xác nhận hủy đơn hàng"}
             </h3>
             <p className="mt-2 text-sm text-gray-600">
               {order.status === "PAID"
-                ? "Đơn hàng của bạn đã thanh toán. Yêu cầu hoàn tiền sẽ được gửi tới nhân viên tại quầy xem xét và phê duyệt."
+                ? "Yêu cầu hủy đơn sẽ được nhân viên xem xét để hoàn vào điểm tài khoản, không hoàn về ngân hàng. Tỷ lệ 1 điểm = 1.000đ, phần lẻ làm tròn lên; điểm thưởng đã nhận từ đơn được thu hồi riêng."
                 : "Bạn có chắc chắn muốn hủy đơn hàng này không?"}
             </p>
 

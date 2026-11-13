@@ -12,7 +12,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --test tests/*.test.mjs",
-    "test:vnpay": "node tests/vnpay-payment.test.mjs"
+    "test:vnpay": "node tests/vnpay-payment.test.mjs",
+    "test:refunds": "node --test tests/refunds.test.mjs"
   },
   "dependencies": {
     "next": "16.4.6",

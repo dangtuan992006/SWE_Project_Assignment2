@@ -60,8 +60,11 @@ function makeService() {
     findFirst: jest.fn().mockResolvedValue(null),
     findMany: jest.fn().mockResolvedValue([]),
     findUnique: jest.fn().mockResolvedValue(null),
+    findUniqueOrThrow: jest.fn(),
     update: jest.fn(),
+    updateMany: jest.fn().mockResolvedValue({ count: 1 }),
   };
+  orderDelegates.findUniqueOrThrow.mockImplementation(() => orderDelegates.findUnique());
   const tx: any = {
     $queryRaw: jest.fn().mockResolvedValue([]),
     product: {
@@ -70,19 +73,22 @@ function makeService() {
       updateMany: jest.fn(),
     },
     order: orderDelegates,
-    payment: {
-      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
-    },
   };
   const prisma: any = {
     order: orderDelegates,
+    user: {
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
     $transaction: jest.fn((cb: (t: typeof tx) => unknown) => cb(tx)),
   };
-  Object.defineProperty(tx, 'refundRequest', {
-    get: () => prisma.refundRequest,
-  });
-  const service = new OrdersService(prisma as never);
-  return { service, prisma, tx };
+  const refunds = {
+    request: jest.fn().mockResolvedValue({ status: 'PENDING', message: 'Đang chờ duyệt' }),
+    approve: jest.fn().mockResolvedValue({ id: 'ref-1', status: 'SUCCEEDED', message: 'Đã hoàn điểm thành công.' }),
+    reject: jest.fn().mockResolvedValue({ id: 'ref-1', status: 'REJECTED', message: 'Đã từ chối.' }),
+    resolve: jest.fn().mockResolvedValue({ id: 'ref-1', status: 'SUCCEEDED', message: 'Đã đối soát.' }),
+  };
+  const service = new OrdersService(prisma as never, undefined, undefined, undefined, refunds as never);
+  return { service, prisma, tx, refunds };
 }
 
 const dto = (over: Partial<CreateOrderDto> = {}): CreateOrderDto => ({
@@ -387,10 +393,7 @@ describe('OrdersService.findOneForUser', () => {
       const { service, prisma } = makeService();
       const order = storedOrder({ status: OrderStatus.PENDING });
       prisma.order.findFirst.mockResolvedValue(order);
-      prisma.order.update.mockResolvedValue({
-        ...order,
-        status: OrderStatus.CANCELLED,
-      });
+      prisma.order.findUnique.mockResolvedValue({ ...order, status: OrderStatus.CANCELLED });
 
       const result = await service.cancelOrder(USER, 'order-1');
       expect(result.success).toBe(true);
@@ -407,83 +410,75 @@ describe('OrdersService.findOneForUser', () => {
       );
     });
 
-    it('tạo yêu cầu hoàn tiền nếu đơn đã PAID', async () => {
-      const { service, prisma } = makeService();
+    it('ủy quyền tạo yêu cầu PAID cho service kiểm tra giao dịch và khóa đơn', async () => {
+      const { service, prisma, refunds } = makeService();
       const order = storedOrder({ status: OrderStatus.PAID });
       prisma.order.findFirst.mockResolvedValue(order);
-      prisma.refundRequest = {
-        findUnique: jest.fn().mockResolvedValue(null),
-        upsert: jest.fn().mockResolvedValue({ id: 'ref-1', status: 'PENDING' }),
-      };
       prisma.order.findUnique.mockResolvedValue(order);
-
       const result = await service.cancelOrder(USER, 'order-1', 'Lý do đổi ý');
-      expect(result.success).toBe(true);
       expect(result.isRefundPending).toBe(true);
-      expect(prisma.refundRequest.upsert).toHaveBeenCalled();
+      expect(refunds.request).toHaveBeenCalledWith(USER, 'order-1', 'Lý do đổi ý');
     });
-  });
 
-  describe('approveRefund Security & State Machine (F-05)', () => {
-    it('chặn approveRefund khi đơn đã chuyển sang PREPARING (không thể hủy/hoàn tiền ngang)', async () => {
+    it('không ghi đè nếu PENDING đã được callback chuyển PAID', async () => {
       const { service, prisma } = makeService();
-      (prisma as any).refundRequest = {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 'ref-1',
-          orderId: 'order-1',
-          status: 'PENDING',
-          order: storedOrder({ status: OrderStatus.PREPARING }),
-        }),
-        update: jest.fn(),
-      };
-      prisma.order.findUnique.mockResolvedValue(storedOrder({ status: OrderStatus.PREPARING }));
-      (prisma as any).payment = { updateMany: jest.fn() };
-
-      await expect(service.approveRefund('order-1', 'staff@brewlite.vn')).rejects.toThrow(
-        ConflictException,
-      );
-      expect((prisma as any).refundRequest.update).not.toHaveBeenCalled();
+      prisma.order.findFirst.mockResolvedValue(storedOrder());
+      prisma.order.updateMany.mockResolvedValue({ count: 0 });
+      await expect(service.cancelOrder(USER, 'order-1')).rejects.toThrow(ConflictException);
       expect(prisma.order.update).not.toHaveBeenCalled();
     });
 
-    it('duyệt hoàn tiền đơn PAID: khóa đơn FOR UPDATE, chuyển Payment sang REFUNDED và Order sang CANCELLED', async () => {
-      const orderPaid = storedOrder({ status: OrderStatus.PAID });
-      const txMock = {
-        $queryRaw: jest.fn().mockResolvedValue([{ id: 'order-1' }]),
-        refundRequest: {
-          findUnique: jest.fn().mockResolvedValue({
-            id: 'ref-1',
-            orderId: 'order-1',
-            status: 'PENDING',
-          }),
-          update: jest.fn().mockResolvedValue({ id: 'ref-1', status: 'APPROVED' }),
-        },
-        order: {
-          findUnique: jest.fn().mockResolvedValue(orderPaid),
-          update: jest.fn().mockResolvedValue(storedOrder({ status: OrderStatus.CANCELLED })),
-        },
-        payment: {
-          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-        },
-      };
-      const prismaMock = {
-        refundRequest: txMock.refundRequest,
-        order: txMock.order,
-        $transaction: jest.fn((cb: (t: typeof txMock) => unknown) => cb(txMock)),
-      };
-      const { OrdersService: OrdersSvc } = await import('./orders.service');
-      const svc = new OrdersSvc(prismaMock as never);
+    it('chặn pha chế khi yêu cầu hoàn tiền còn chờ duyệt', async () => {
+      const { service, prisma } = makeService();
+      prisma.order.findUnique.mockResolvedValue(storedOrder({ status: 'PAID', refundRequest: { status: 'PENDING' } }));
+      await expect(service.updateStatus('order-1', OrderStatus.PREPARING)).rejects.toThrow(ConflictException);
+      expect(prisma.order.update).not.toHaveBeenCalled();
+    });
 
-      const res = await svc.approveRefund('order-1', 'staff@brewlite.vn');
+    it('không cho hủy PAID để bỏ qua hoàn tiền', async () => {
+      const { service, prisma } = makeService();
+      prisma.order.findUnique.mockResolvedValue(storedOrder({ status: 'PAID' }));
+      await expect(service.updateStatus('order-1', OrderStatus.CANCELLED)).rejects.toThrow(ConflictException);
+    });
+  });
 
-      expect(txMock.$queryRaw).toHaveBeenCalledTimes(1);
-      expect(txMock.payment.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { orderId: 'order-1', status: 'SUCCESS' },
-          data: expect.objectContaining({ status: 'REFUNDED' }),
-        }),
-      );
+  describe('approveRefund Delegation & updateStatus Inventory Audit', () => {
+    it('ủy quyền duyệt hoàn điểm sang RefundsService và trả về đơn CANCELLED', async () => {
+      const { service, prisma, refunds } = makeService();
+      prisma.order.findUnique.mockResolvedValue(storedOrder({ status: OrderStatus.CANCELLED }));
+
+      const res = await service.approveRefund('order-1', 'staff@brewlite.vn');
+
+      expect(refunds.approve).toHaveBeenCalledWith('order-1', 'staff@brewlite.vn');
+      expect(res.success).toBe(true);
       expect(res.order.status).toBe(OrderStatus.CANCELLED);
+    });
+
+    it('updateStatus truyền đúng tên nhân viên thực hiện khi trừ nguyên liệu nếu chưa trừ lúc thanh toán', async () => {
+      const { prisma, tx, refunds } = makeService();
+      const orderPaid = storedOrder({ status: OrderStatus.PAID, paidIngredientDeductions: null });
+      const orderPrep = storedOrder({ status: OrderStatus.PREPARING, paidIngredientDeductions: null });
+      prisma.order.findUnique.mockResolvedValue(orderPaid);
+      prisma.order.update.mockResolvedValue(orderPrep);
+      prisma.user.findUnique.mockResolvedValue({ fullName: 'Nguyễn Barista', email: 'barista@brewlite.vn' });
+      const inventoryService = { deductIngredientsForOrder: jest.fn().mockResolvedValue(undefined) };
+
+      const svc = new OrdersService(
+        prisma as never,
+        undefined,
+        undefined,
+        inventoryService as never,
+        refunds as never,
+      );
+
+      await svc.updateStatus('order-1', OrderStatus.PREPARING, 'staff-id-1');
+
+      expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+      expect(inventoryService.deductIngredientsForOrder).toHaveBeenCalledWith(
+        tx,
+        'order-1',
+        'Nguyễn Barista',
+      );
     });
   });
 });

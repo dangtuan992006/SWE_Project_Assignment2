@@ -373,3 +373,7 @@ Sau khi hoàn tất rollback, bắt buộc chạy kiểm thử khói chỉ đọ
 # Chạy kiểm thử khói an toàn trên Production (GET /health, /products, /products/:id, /payments/config)
 node tests/e2e-checkout.flow.mjs --smoke https://brewlite-api-2tuk.onrender.com
 ```
+
+## Hoàn tiền
+
+Xem [hướng dẫn hoàn bằng điểm](docs/guides/REFUNDS.md) cho tỷ lệ quy đổi, quyền duyệt, kiểm thử và cách xử lý lịch sử hoàn tiền cũ.

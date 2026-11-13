@@ -84,7 +84,7 @@ export class VnpayService {
   }
 
   // Định dạng yyyyMMddHHmmss theo giờ Việt Nam.
-  private formatDate(date: Date): number {
+  formatDate(date: Date): number {
     const parts = new Intl.DateTimeFormat('en-GB', {
       timeZone: 'Asia/Ho_Chi_Minh',
       year: 'numeric',
