@@ -82,9 +82,9 @@ jobs:
         working-directory: apps/web
         run: npm run lint
 
-      - name: Chạy Unit Tests Frontend (VNPay)
+      - name: Chạy Unit Tests Frontend (VNPay & Security)
         working-directory: apps/web
-        run: npm run test:vnpay
+        run: npm test
 
   # ============================================================================
   # GIAI ĐOẠN 2: BUILD ỨNG DỤNG (FRONTEND & BACKEND)
