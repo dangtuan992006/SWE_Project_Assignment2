@@ -94,7 +94,7 @@ Ran all test suites.
 
 - **Kiểm thử E2E nội bộ NestJS (chạy ở Stage 2 `ea1b2fc` trên DB `brewlite_test`):** 1 suite, **4/4 tests PASS** (`Exit Code 0`; chưa chạy lại ở Stage 3 do Docker Desktop đang tắt).
 
-#### Frontend (`apps/web` — Next.js 16.4.0 Turbopack, ESLint v9.39.5)
+#### Frontend (`apps/web` — Next.js 16.4.6 Turbopack, ESLint v9.39.5)
 ```text
 > frontend@0.1.0 lint
 > eslint
@@ -119,7 +119,7 @@ Ran all test suites.
 > frontend@0.1.0 build
 > next build
 
-▲ Next.js 16.4.0 (Turbopack)
+▲ Next.js 16.4.6 (Turbopack)
 ✓ Compiled & generated static pages (13/13 static pages)
 
 Route (app)
@@ -158,5 +158,5 @@ Route (app)
 | **Full Unit & Security FE (Stage 3)** | Node.js Test Runner | `npm test` (`apps/web`) | 31 / 31 tests pass (`security-utils.test.mjs` + `vnpay-payment.test.mjs`) | ✅ PASSED |
 | **E2E & HTTP Integration** | NestJS Supertest, Node 24 & Browser UI | `npm run test:e2e`, `e2e-checkout.flow.mjs`, `e2e-integration.spec.ts` | Stage 2 `ea1b2fc` (4 BE E2E + 9 bước flow + 6 HTTP tests); Stage 3 (`--smoke` 4/4 + Browser UI E2E) | ✅ PASSED (scope ghi chú) |
 | **Biên dịch Backend** | NestJS CLI | `npm run build` (`apps/api`) | Biên dịch TypeScript sang `dist/` sạch sẽ (`Exit Code 0`) | ✅ PASSED |
-| **Biên dịch Frontend** | Next.js 16.4.0 Turbopack | `npm run build` (`apps/web`) | 13/13 static pages, 11 route entries App Router (`Exit Code 0`) | ✅ PASSED |
+| **Biên dịch Frontend** | Next.js 16.4.6 Turbopack | `npm run build` (`apps/web`) | 13/13 static pages, 11 route entries App Router (`Exit Code 0`) | ✅ PASSED |
 | **Cấu hình Docker & CI/CD** | Docker Compose & PyYAML | `docker compose config --quiet`, YAML parse | Hợp lệ cấu hình `ci.yml`, `cd.yml` (Node 24 + GHCR push + strict `--smoke`) | ✅ PASSED |
