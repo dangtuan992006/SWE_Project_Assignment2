@@ -241,7 +241,7 @@ export class OrdersService {
           orderId,
           performerName,
         );
-      } catch (_err) {
+      } catch {
         // Không chặn cập nhật đơn hàng nếu trừ nguyên liệu gặp lỗi
       }
     }

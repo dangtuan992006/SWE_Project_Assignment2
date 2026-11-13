@@ -41,10 +41,15 @@ describe('OrdersController', () => {
   });
 
   describe('RBAC Role Authorization', () => {
+    const getHandler = (method: keyof OrdersController) =>
+      Object.getOwnPropertyDescriptor(OrdersController.prototype, method)?.value as (
+        ...args: unknown[]
+      ) => unknown;
+
     it('PATCH :id/status phải yêu cầu role BARISTA hoặc ADMIN', () => {
       const roles = reflector.get<Role[]>(
         ROLES_KEY,
-        OrdersController.prototype.updateStatus,
+        getHandler('updateStatus'),
       );
       expect(roles).toBeDefined();
       expect(roles).toContain(Role.BARISTA);
@@ -55,7 +60,7 @@ describe('OrdersController', () => {
     it('GET staff/all phải yêu cầu role BARISTA hoặc ADMIN', () => {
       const roles = reflector.get<Role[]>(
         ROLES_KEY,
-        OrdersController.prototype.findStaffOrders,
+        getHandler('findStaffOrders'),
       );
       expect(roles).toBeDefined();
       expect(roles).toContain(Role.BARISTA);
@@ -66,7 +71,7 @@ describe('OrdersController', () => {
     it('POST :id/approve-refund phải yêu cầu role BARISTA hoặc ADMIN', () => {
       const roles = reflector.get<Role[]>(
         ROLES_KEY,
-        OrdersController.prototype.approveRefund,
+        getHandler('approveRefund'),
       );
       expect(roles).toBeDefined();
       expect(roles).toContain(Role.BARISTA);

@@ -150,11 +150,14 @@ export class AuthService {
       throw new NotFoundException('Không tìm thấy thông tin người dùng.');
     }
 
+    const data: { fullName?: string | null } = {};
+    if (dto.fullName !== undefined) {
+      data.fullName = dto.fullName?.trim() || null;
+    }
+
     const updated = await this.prisma.user.update({
       where: { id: userId },
-      data: {
-        ...(dto.fullName !== undefined ? { fullName: dto.fullName?.trim() || null } : {}),
-      },
+      data,
       select: {
         id: true,
         email: true,

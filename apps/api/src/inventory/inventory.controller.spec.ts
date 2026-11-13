@@ -3,6 +3,11 @@ import { Role } from '@prisma/client';
 import { InventoryController } from './inventory.controller';
 import { ROLES_KEY } from '../auth/decorators/roles.decorator';
 
+const getHandler = (method: keyof InventoryController) =>
+  Object.getOwnPropertyDescriptor(InventoryController.prototype, method)?.value as (
+    ...args: unknown[]
+  ) => unknown;
+
 describe('InventoryController RBAC Roles', () => {
   let reflector: Reflector;
 
@@ -13,7 +18,7 @@ describe('InventoryController RBAC Roles', () => {
   it('DELETE /inventory/ingredients/:id phải yêu cầu role BARISTA hoặc ADMIN', () => {
     const roles = reflector.get<Role[]>(
       ROLES_KEY,
-      InventoryController.prototype.deleteIngredient,
+      getHandler('deleteIngredient'),
     );
     expect(roles).toBeDefined();
     expect(roles).toContain(Role.BARISTA);
@@ -24,7 +29,7 @@ describe('InventoryController RBAC Roles', () => {
   it('POST /inventory/ingredients phải yêu cầu role BARISTA hoặc ADMIN', () => {
     const roles = reflector.get<Role[]>(
       ROLES_KEY,
-      InventoryController.prototype.createIngredient,
+      getHandler('createIngredient'),
     );
     expect(roles).toBeDefined();
     expect(roles).toContain(Role.BARISTA);
@@ -34,7 +39,7 @@ describe('InventoryController RBAC Roles', () => {
   it('PATCH /inventory/ingredients/:id/stock phải yêu cầu role BARISTA hoặc ADMIN', () => {
     const roles = reflector.get<Role[]>(
       ROLES_KEY,
-      InventoryController.prototype.updateStock,
+      getHandler('updateStock'),
     );
     expect(roles).toBeDefined();
     expect(roles).toContain(Role.BARISTA);
@@ -44,7 +49,7 @@ describe('InventoryController RBAC Roles', () => {
   it('POST /inventory/products phải yêu cầu role BARISTA hoặc ADMIN', () => {
     const roles = reflector.get<Role[]>(
       ROLES_KEY,
-      InventoryController.prototype.createProduct,
+      getHandler('createProduct'),
     );
     expect(roles).toBeDefined();
     expect(roles).toContain(Role.BARISTA);
@@ -54,7 +59,7 @@ describe('InventoryController RBAC Roles', () => {
   it('PUT /inventory/products/:id/recipes phải yêu cầu role BARISTA hoặc ADMIN', () => {
     const roles = reflector.get<Role[]>(
       ROLES_KEY,
-      InventoryController.prototype.updateProductRecipes,
+      getHandler('updateProductRecipes'),
     );
     expect(roles).toBeDefined();
     expect(roles).toContain(Role.BARISTA);
