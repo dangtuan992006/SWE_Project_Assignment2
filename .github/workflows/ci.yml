@@ -92,5 +92,8 @@ jobs:
       - name: Run Linter
         run: npm run lint
 
+      - name: Run Frontend Tests
+        run: npm run test:vnpay
+
       - name: Build Frontend
         run: npm run build

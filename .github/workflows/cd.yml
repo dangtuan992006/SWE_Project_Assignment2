@@ -17,6 +17,10 @@ concurrency:
   group: cd-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   # ============================================================================
   # GIAI ĐOẠN 1: QUALITY GATE (LINT & TEST)
@@ -78,6 +82,10 @@ jobs:
         working-directory: apps/web
         run: npm run lint
 
+      - name: Chạy Unit Tests Frontend (VNPay)
+        working-directory: apps/web
+        run: npm run test:vnpay
+
   # ============================================================================
   # GIAI ĐOẠN 2: BUILD ỨNG DỤNG (FRONTEND & BACKEND)
   # ============================================================================
@@ -108,7 +116,7 @@ jobs:
           NEXT_TELEMETRY_DISABLED: 1
         run: |
           npm ci
-          npm run build || npm run build
+          npm run build
 
   # ============================================================================
   # GIAI ĐOẠN 3: DOCKER IMAGE BUILD & DEPLOY TO PRODUCTION
@@ -124,23 +132,44 @@ jobs:
       - name: Thiết lập Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Đóng gói Docker Image Backend (Tag commit SHA & latest)
+      - name: Đăng nhập GitHub Container Registry (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Đóng gói & đẩy Docker Image Backend lên GHCR (SHA, latest, tag)
         run: |
           IMAGE_REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          docker build \
+          TAGS=(
+            "--tag" "ghcr.io/${IMAGE_REPO}/brewlite-api:${{ github.sha }}"
+            "--tag" "ghcr.io/${IMAGE_REPO}/brewlite-api:latest"
+          )
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAGS+=("--tag" "ghcr.io/${IMAGE_REPO}/brewlite-api:${{ github.ref_name }}")
+          fi
+          docker buildx build \
             --file apps/api/Dockerfile \
-            --tag ghcr.io/${IMAGE_REPO}/brewlite-api:${{ github.sha }} \
-            --tag ghcr.io/${IMAGE_REPO}/brewlite-api:latest \
+            "${TAGS[@]}" \
+            --push \
             apps/api
 
-      - name: Đóng gói Docker Image Frontend (Tag commit SHA & latest)
+      - name: Đóng gói & đẩy Docker Image Frontend lên GHCR (SHA, latest, tag)
         run: |
           IMAGE_REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          docker build \
+          TAGS=(
+            "--tag" "ghcr.io/${IMAGE_REPO}/brewlite-web:${{ github.sha }}"
+            "--tag" "ghcr.io/${IMAGE_REPO}/brewlite-web:latest"
+          )
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAGS+=("--tag" "ghcr.io/${IMAGE_REPO}/brewlite-web:${{ github.ref_name }}")
+          fi
+          docker buildx build \
             --file apps/web/Dockerfile \
-            --build-arg NEXT_PUBLIC_API_URL=${{ secrets.PROD_API_URL || 'https://api-brewlite.onrender.com' }} \
-            --tag ghcr.io/${IMAGE_REPO}/brewlite-web:${{ github.sha }} \
-            --tag ghcr.io/${IMAGE_REPO}/brewlite-web:latest \
+            --build-arg "NEXT_PUBLIC_API_URL=${{ secrets.PROD_API_URL || 'https://brewlite-api-2tuk.onrender.com' }}" \
+            "${TAGS[@]}" \
+            --push \
             apps/web
 
       - name: Kích hoạt triển khai Backend API lên Cloud PaaS
@@ -187,21 +216,38 @@ jobs:
       - name: Thực hiện kiểm thử khói (Smoke Test Endpoint)
         env:
           PROD_API_URL: ${{ secrets.PROD_API_URL }}
+          PROD_WEB_URL: ${{ secrets.PROD_WEB_URL }}
         run: |
-          TARGET_URL="${PROD_API_URL:-https://api-brewlite.onrender.com}"
-          echo "🔍 Đang thực hiện Smoke Test tới máy chủ: $TARGET_URL"
-          
-          if [ -z "${{ secrets.PROD_API_URL }}" ]; then
-            echo "::notice::Chưa cấu hình secret PROD_API_URL. Chạy kiểm tra mô phỏng qua runner độc lập."
-            node tests/e2e-checkout.flow.mjs "$TARGET_URL" || echo "⚠️ Máy chủ $TARGET_URL chưa sẵn sàng hoặc đang ở chế độ cold start. Bỏ qua chặn lỗi nếu chưa có live URL."
-          else
-            echo "Kiểm tra endpoint Health..."
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$TARGET_URL/health" || curl -s -o /dev/null -w "%{http_code}" "$TARGET_URL/")
-            echo "HTTP Status nhận được: $HTTP_STATUS"
-            if [ "$HTTP_STATUS" -eq 200 ]; then
-              echo "✅ Health check thành công! Ứng dụng đã sẵn sàng phục vụ."
-            else
-              echo "❌ Health check trả về mã lỗi: $HTTP_STATUS"
-              exit 1
-            fi
-          fi
+          TARGET_URL="${PROD_API_URL:-https://brewlite-api-2tuk.onrender.com}"
+          TARGET_URL="${TARGET_URL%/}"
+          WEB_URL="${PROD_WEB_URL:-https://swe-project-assignment2.vercel.app}"
+          WEB_URL="${WEB_URL%/}"
+
+          check_http_200() {
+            local url="$1"
+            local label="$2"
+            local max_attempts=12
+            local sleep_seconds=5
+            local status="000"
+
+            for attempt in $(seq 1 "$max_attempts"); do
+              status=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 15 "$url" || echo "000")
+              if [ "$status" = "200" ]; then
+                echo "✅ $label trả về HTTP 200 ($url, attempt $attempt/$max_attempts)"
+                return 0
+              fi
+              echo "⏳ $label chưa sẵn sàng (HTTP $status, attempt $attempt/$max_attempts)..."
+              if [ "$attempt" -lt "$max_attempts" ]; then
+                sleep "$sleep_seconds"
+              fi
+            done
+
+            echo "❌ $label thất bại sau $max_attempts lần thử (HTTP $status): $url"
+            return 1
+          }
+
+          echo "🔍 Đang thực hiện Smoke Test tới API: $TARGET_URL | Web: $WEB_URL"
+          check_http_200 "${TARGET_URL}/health" "API Health"
+          check_http_200 "${TARGET_URL}/swagger" "API Swagger"
+          check_http_200 "${WEB_URL}" "Frontend Web"
+          node tests/e2e-checkout.flow.mjs --smoke "$TARGET_URL"
