@@ -32,25 +32,29 @@ Toàn bộ quy trình trải dài từ lúc người dùng chọn sản phẩm t
 ## 3. Xác định danh mục phạm vi
 
 ### 3.1. In-scope (Trong phạm vi)
-- Hiển thị danh sách các loại đồ uống (menu) bao gồm hình ảnh, tên và mức giá tương ứng.
-- Cung cấp giao diện xem chi tiết sản phẩm để người dùng chọn kích cỡ (size) và các loại topping.
-- Thao tác giỏ hàng: thêm sản phẩm, sửa, xóa sản phẩm và hệ thống tự động tính toán tổng số tiền.
-- Chức năng đăng ký và đăng nhập tài khoản người dùng thông qua xác thực token JWT.
-- Khởi tạo đơn hàng trên hệ thống và xử lý thanh toán không dùng tiền mặt.
-- Hiển thị màn hình xác nhận (mã đơn, trạng thái hiện tại) và danh sách lưu trữ lịch sử đặt hàng.
-- Xử lý các logic nghiệp vụ backend chuyên sâu:
-  - Chuyển đổi trạng thái đơn hàng hợp lệ (State Machine).
-  - Cơ chế thanh toán idempotent (chống trừ tiền trùng lặp).
-  - Kiểm soát tồn kho bằng optimistic locking khi có giao dịch đặt đồng thời.
-  - Tính điểm thưởng và áp dụng mã khuyến mãi.
+- **Core Checkout MVP (Đặt hàng & Thanh toán không tiền mặt cho Khách hàng):**
+  - Hiển thị danh sách đồ uống (menu) theo danh mục, hình ảnh, tên và mức giá tương ứng.
+  - Xem chi tiết sản phẩm (`/products/[id]`), chọn kích cỡ (`S`, `M`, `L`) và các loại topping.
+  - Thao tác giỏ hàng (`/cart`): thêm, sửa số lượng, xóa món và tính tạm tính qua Zustand store.
+  - Đăng ký (`/register`), đăng nhập (`/login`) và quản lý hồ sơ (`/UserProfile`) với xác thực JWT và phân quyền RBAC (`CUSTOMER`, `BARISTA`, `ADMIN`).
+  - Khởi tạo đơn hàng idempotent (`Idempotency-Key`), xử lý thanh toán không dùng tiền mặt qua `VNPAY` Sandbox hoặc `MOCK`, tự động hết hạn đơn chưa thanh toán sau cửa sổ 10 phút (`ORDER_PAYMENT_WINDOW_MS`).
+  - Hiển thị màn hình chi tiết đơn hàng (`/orders/[id]`) và lịch sử đặt hàng của khách hàng (`/orders`).
+- **Implemented Phase 2 / Staff Portal, Kho & Khuyến mãi (Đã triển khai):**
+  - **Staff Portal (`/staff` dành cho `BARISTA` / `ADMIN`):** Theo dõi toàn bộ đơn hàng (`GET /orders/staff/all`) và cập nhật trạng thái pha chế theo Order State Machine (`PAID` → `PREPARING` → `READY` → `COMPLETED`).
+  - **Quản lý kho nguyên liệu & công thức (`InventoryModule`):** Quản lý nguyên liệu (`Ingredient`), công thức định lượng theo size (`RecipeItem`), tự động trừ nguyên liệu khi đơn chuyển sang `PAID`/`PREPARING`, tính lại tồn kho sản phẩm (`recalculate-stock`) và ghi nhận nhật ký kho (`IngredientAuditLog`).
+  - **Hủy đơn & Duyệt hoàn tiền:** Khách hàng hủy đơn (`POST /orders/:id/cancel` — hủy trực tiếp nếu `PENDING`/`PAYMENT_FAILED` hoặc tạo `RefundRequest` nếu đã `PAID`); Nhân viên/Admin duyệt hoàn tiền (`POST /orders/:id/approve-refund`).
+  - **Khuyến mãi & Điểm thưởng Loyalty (`PromotionsModule`):** Danh sách & áp dụng voucher (`GET /promotions/vouchers`, `POST /promotions/apply`), tích điểm thưởng (`10.000đ = 1 điểm`) và đổi điểm lấy voucher (`POST /promotions/redeem-points` với `REWARD10K`, `REWARD20K`, `REWARD50K`).
 
 ### 3.2. Out-of-scope (Ngoài phạm vi)
-- Các chức năng thao tác của Nhân viên quầy/Barista bao gồm việc tiếp nhận đơn đặt hàng trực tiếp trên UI và cập nhật trạng thái pha chế (nằm ngoài phạm vi của MVP).
+- Thanh toán tiền mặt hoặc thu hộ khi nhận hàng (COD) — hệ thống vận hành 100% không dùng tiền mặt.
+- Tích hợp cổng thanh toán giao dịch tiền thật trên môi trường thương mại (chỉ sử dụng VNPay Sandbox và Mock Payment Adapter).
+- Tích hợp đơn vị vận chuyển/tài xế giao hàng bên thứ ba hoặc ứng dụng di động native iOS/Android riêng biệt (giao diện web theo hướng mobile-first).
+> *Ghi chú đồng bộ:* Chức năng thao tác của Nhân viên quầy/Barista (Staff Portal `/staff`, cập nhật trạng thái pha chế, quản lý kho và duyệt hoàn tiền) đã được đưa vào phạm vi triển khai Phase 2 và hoàn thiện trong mã nguồn hiện tại.
 
 ### 3.3. Giả định (Assumptions)
-- Cổng thanh toán thực tế của các bên thứ ba được thay thế bằng dịch vụ mô phỏng (Mock Payment Service).
+- Giao dịch trực tuyến bên ngoài được thực hiện qua cấu hình cổng thanh toán `VNPAY` Sandbox (HMAC-SHA512, Return URL/IPN) hoặc `MOCK` Payment Adapter (`PAYMENT_PROVIDER`), không phát sinh giao dịch tiền thật.
 - Hệ thống đáp ứng tiêu chuẩn hiệu năng với thời gian phản hồi API dưới 500ms khi truy xuất cơ sở dữ liệu mẫu.
-- Giao diện ứng dụng hoạt động tương thích và ổn định trên các trình duyệt web tiêu chuẩn.
+- Giao diện ứng dụng hoạt động tương thích và ổn định trên các trình duyệt web tiêu chuẩn (desktop & mobile responsive).
 
 ### 3.4. Ràng buộc (Constraints)
 

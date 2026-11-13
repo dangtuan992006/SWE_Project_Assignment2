@@ -241,7 +241,7 @@ export class OrdersService {
           orderId,
           performerName,
         );
-      } catch (_err) {
+      } catch {
         // Không chặn cập nhật đơn hàng nếu trừ nguyên liệu gặp lỗi
       }
     }
@@ -256,94 +256,103 @@ export class OrdersService {
    * - Nếu PREPARING, READY, COMPLETED: Chặn hủy và ném ConflictException.
    */
   async cancelOrder(userId: string, orderId: string, reason?: string) {
-    const order = await this.prisma.order.findFirst({
-      where: { id: orderId, userId },
-      include: orderWithItems.include,
-    });
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`
+        SELECT "id"
+        FROM "orders"
+        WHERE "id" = ${orderId}
+        FOR UPDATE
+      `;
 
-    if (!order) {
-      throw new NotFoundException('Không tìm thấy đơn hàng cần hủy.');
-    }
-
-    if (
-      order.status === OrderStatus.PREPARING ||
-      order.status === OrderStatus.READY ||
-      order.status === OrderStatus.COMPLETED
-    ) {
-      throw new ConflictException(
-        'Đồ uống đang được thực hiện hoặc đã hoàn thành, không thể hủy đơn lúc này.',
-      );
-    }
-
-    if (order.status === OrderStatus.CANCELLED) {
-      throw new ConflictException('Đơn hàng này đã được hủy trước đó.');
-    }
-
-    // Nếu đơn chưa thanh toán (PENDING hoặc PAYMENT_FAILED): Hủy ngay lập tức
-    if (
-      order.status === OrderStatus.PENDING ||
-      order.status === OrderStatus.PAYMENT_FAILED
-    ) {
-      const updated = await this.prisma.order.update({
-        where: { id: orderId },
-        data: { status: OrderStatus.CANCELLED },
+      const order = await tx.order.findFirst({
+        where: { id: orderId, userId },
         include: orderWithItems.include,
       });
 
-      return {
-        success: true,
-        message: 'Đã hủy đơn hàng thành công.',
-        status: OrderStatus.CANCELLED,
-        order: this.toResponse(updated),
-      };
-    }
+      if (!order) {
+        throw new NotFoundException('Không tìm thấy đơn hàng cần hủy.');
+      }
 
-    // Nếu đơn đã thanh toán (PAID): Tạo yêu cầu hoàn tiền cho Staff duyệt
-    if (order.status === OrderStatus.PAID) {
-      const existingRefund = await this.prisma.refundRequest.findUnique({
-        where: { orderId },
-      });
+      if (
+        order.status === OrderStatus.PREPARING ||
+        order.status === OrderStatus.READY ||
+        order.status === OrderStatus.COMPLETED
+      ) {
+        throw new ConflictException(
+          'Đồ uống đang được thực hiện hoặc đã hoàn thành, không thể hủy đơn lúc này.',
+        );
+      }
 
-      if (existingRefund && existingRefund.status === 'PENDING') {
+      if (order.status === OrderStatus.CANCELLED) {
+        throw new ConflictException('Đơn hàng này đã được hủy trước đó.');
+      }
+
+      // Nếu đơn chưa thanh toán (PENDING hoặc PAYMENT_FAILED): Hủy ngay lập tức
+      if (
+        order.status === OrderStatus.PENDING ||
+        order.status === OrderStatus.PAYMENT_FAILED
+      ) {
+        const updated = await tx.order.update({
+          where: { id: orderId },
+          data: { status: OrderStatus.CANCELLED },
+          include: orderWithItems.include,
+        });
+
         return {
           success: true,
-          message: 'Yêu cầu hoàn tiền của bạn đang chờ nhân viên quầy xử lý.',
-          isRefundPending: true,
-          status: OrderStatus.PAID,
-          order: this.toResponse(order),
+          message: 'Đã hủy đơn hàng thành công.',
+          status: OrderStatus.CANCELLED,
+          order: this.toResponse(updated),
         };
       }
 
-      await this.prisma.refundRequest.upsert({
-        where: { orderId },
-        create: {
-          orderId,
-          userId,
-          amount: order.totalAmount,
-          reason: reason || 'Khách hàng hủy đơn sau khi thanh toán',
-          status: 'PENDING',
-        },
-        update: {
-          reason: reason || 'Khách hàng hủy đơn sau khi thanh toán',
-          status: 'PENDING',
-        },
-      });
+      // Nếu đơn đã thanh toán (PAID): Tạo yêu cầu hoàn tiền cho Staff duyệt
+      if (order.status === OrderStatus.PAID) {
+        const existingRefund = await tx.refundRequest.findUnique({
+          where: { orderId },
+        });
 
-      const updated = await this.prisma.order.findUnique({
-        where: { id: orderId },
-        include: orderWithItems.include,
-      });
+        if (existingRefund && existingRefund.status === 'PENDING') {
+          return {
+            success: true,
+            message: 'Yêu cầu hoàn tiền của bạn đang chờ nhân viên quầy xử lý.',
+            isRefundPending: true,
+            status: OrderStatus.PAID,
+            order: this.toResponse(order),
+          };
+        }
 
-      return {
-        success: true,
-        message: 'Đã gửi yêu cầu hủy đơn và hoàn tiền đến nhân viên quầy.',
-        isRefundPending: true,
-        status: OrderStatus.PAID,
-        order: this.toResponse(updated!),
-      };
-    }
+        await tx.refundRequest.upsert({
+          where: { orderId },
+          create: {
+            orderId,
+            userId,
+            amount: order.totalAmount,
+            reason: reason || 'Khách hàng hủy đơn sau khi thanh toán',
+            status: 'PENDING',
+          },
+          update: {
+            reason: reason || 'Khách hàng hủy đơn sau khi thanh toán',
+            status: 'PENDING',
+          },
+        });
 
-    throw new ConflictException('Trạng thái đơn hàng không hợp lệ để hủy.');
+        const updated = await tx.order.findUnique({
+          where: { id: orderId },
+          include: orderWithItems.include,
+        });
+
+        return {
+          success: true,
+          message: 'Đã gửi yêu cầu hủy đơn và hoàn tiền đến nhân viên quầy.',
+          isRefundPending: true,
+          status: OrderStatus.PAID,
+          order: this.toResponse(updated!),
+        };
+      }
+
+      throw new ConflictException('Trạng thái đơn hàng không hợp lệ để hủy.');
+    });
   }
 
   /**
@@ -379,20 +388,42 @@ export class OrdersService {
    * Nhân viên chấp nhận duyệt hoàn tiền cho đơn hàng
    */
   async approveRefund(orderId: string, staffEmail: string) {
-    const refund = await this.prisma.refundRequest.findUnique({
-      where: { orderId },
-      include: { order: true },
-    });
-
-    if (!refund) {
-      throw new NotFoundException('Không tìm thấy yêu cầu hoàn tiền cho đơn hàng này.');
-    }
-
-    if (refund.status !== 'PENDING') {
-      throw new ConflictException('Yêu cầu hoàn tiền này đã được xử lý trước đó.');
-    }
-
     return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`
+        SELECT "id"
+        FROM "orders"
+        WHERE "id" = ${orderId}
+        FOR UPDATE
+      `;
+
+      const refund = await tx.refundRequest.findUnique({
+        where: { orderId },
+      });
+
+      if (!refund) {
+        throw new NotFoundException('Không tìm thấy yêu cầu hoàn tiền cho đơn hàng này.');
+      }
+
+      if (refund.status !== 'PENDING') {
+        throw new ConflictException('Yêu cầu hoàn tiền này đã được xử lý trước đó.');
+      }
+
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+      });
+
+      if (!order) {
+        throw new NotFoundException('Không tìm thấy đơn hàng cần hoàn tiền.');
+      }
+
+      if (order.status !== OrderStatus.PAID) {
+        throw new ConflictException(
+          'Chỉ có thể duyệt hoàn tiền khi đơn hàng đang ở trạng thái đã thanh toán (PAID).',
+        );
+      }
+
+      assertOrderTransition(order.status, OrderStatus.CANCELLED);
+
       // 1. Cập nhật RefundRequest
       await tx.refundRequest.update({
         where: { orderId },
@@ -403,7 +434,13 @@ export class OrdersService {
         },
       });
 
-      // 2. Chuyển trạng thái Order sang CANCELLED
+      // 2. Đánh dấu giao dịch đã thanh toán thành công sang REFUNDED
+      await tx.payment.updateMany({
+        where: { orderId, status: 'SUCCESS' },
+        data: { status: 'REFUNDED', refundedAt: new Date() },
+      });
+
+      // 3. Chuyển trạng thái Order sang CANCELLED
       const updatedOrder = await tx.order.update({
         where: { id: orderId },
         data: { status: OrderStatus.CANCELLED },

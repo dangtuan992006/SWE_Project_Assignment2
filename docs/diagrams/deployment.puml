@@ -1,5 +1,5 @@
 @startuml
-title BrewLite - Sơ đồ triển khai môi trường Production (Task 3.2)
+title BrewLite - Sơ đồ triển khai môi trường Production (Assignment 2)
 
 skinparam shadowing false
 skinparam componentStyle rectangle
@@ -7,74 +7,82 @@ skinparam defaultFontName Arial
 skinparam ArrowColor #475569
 skinparam packageStyle rectangle
 
-actor "Người dùng\n(Trình duyệt / PWA)" as user
+actor "Người dùng / Barista\n(Trình duyệt / Mobile PWA)" as user
 
 cloud "Internet công cộng" as internet
 
-node "GitHub Actions (CI Runner)" as ci {
-  component "CI/CD Pipeline\n(Lint -> Test -> Build Image)" as pipeline
+node "GitHub Actions (CI/CD - Node 24)" as ci {
+  component "CI Pipeline (ci.yml)\nLint -> Unit Test (API & Web) -> Build" as ci_pipe
+  component "CD Pipeline (cd.yml)\nQuality Gate -> Build -> GHCR Push -> Deploy -> Smoke Test" as cd_pipe
 }
 
-node "Container Registry\n(GHCR / Docker Hub)" as registry {
-  artifact "Docker Image: brewlite-api\n(tag: commit SHA / v1.0.0)" as image
+node "GitHub Container Registry (ghcr.io)" as registry {
+  artifact "Image: brewlite-api\n(tags: SHA, latest, v*.*.*)" as img_api
+  artifact "Image: brewlite-web\n(tags: SHA, latest, v*.*.*)" as img_web
 }
 
-node "Dịch vụ Web/CDN\n(Render / Vercel / tương đương)" as web {
-  component "Giao diện Next.js\n(tài nguyên tĩnh + SSR)" as next
+node "Vercel (Web Hosting & Edge CDN)\nswe-project-assignment2.vercel.app" as web {
+  component "Frontend Next.js 16 (Node 24)\nRoutes: /, /products/[id], /cart,\n/orders, /orders/[id], /staff, ..." as next
 }
 
-node "Dịch vụ API\n(Render / Railway / Fly.io / VPS)" as api {
-  component "API NestJS\nHTTPS :443 -> HTTP :8080" as nest
-  artifact "Secret / biến môi trường\nPORT, DATABASE_URL,\nJWT_SECRET, khóa thanh toán" as secrets
+node "Render Cloud PaaS (API Service)\nbrewlite-api-2tuk.onrender.com" as api {
+  component "API NestJS (Container :8080)\nHTTPS :443 -> HTTP :8080\nHealth: GET /health | Swagger: /swagger" as nest
+  artifact "Environment Secrets\nPORT, DATABASE_URL, JWT_SECRET,\nPAYMENT_PROVIDER, VNPAY_TMN_CODE, VNPAY_HASH_SECRET" as secrets
 }
 
-database "PostgreSQL được quản lý\nlưu trữ bền vững" as db {
-  component "Cơ sở dữ liệu\n(mạng nội bộ)" as postgres
+database "Render Managed PostgreSQL 16\n(Lưu trữ bền vững & Backup)" as db {
+  component "CSDL PostgreSQL\n(Prisma ORM & Migration)" as postgres
 }
 
-cloud "Cổng thanh toán giả lập\n(hoặc nhà cung cấp bên ngoài)" as payment
+cloud "Cổng thanh toán bên ngoài\nVNPay Sandbox (HMAC-SHA512)\nhoặc Mock Payment Adapter" as payment
 
-' Luồng đóng gói & phát hành container
-pipeline --> registry : Docker Push Image (tag: SHA)\nqua token bảo mật CI
-registry ..> api : Docker Pull Image\nđể khởi chạy Container
+' Luồng CI/CD & Container Registry
+ci_pipe ..> cd_pipe : Bảo vệ nhánh main (PR Quality Gate)
+cd_pipe --> registry : Docker Buildx Push\n(brewlite-api & brewlite-web)
+registry ..> api : Docker Image (Node 24)
+registry ..> web : Docker Image (Node 24)
+cd_pipe ..> api : Deploy Webhook & Smoke Test\n(/health, /swagger, --smoke)
+cd_pipe ..> web : Deploy & Smoke Check (HTTP 200)
 
 ' Luồng người dùng & runtime production
 user --> internet : HTTPS
-internet --> web : HTTPS
-web --> api : REST qua HTTPS\nCORS allow-list
-api --> db : TLS / mạng nội bộ\n5432
-api --> payment : HTTPS
-api ..> secrets : đọc khi khởi động
+internet --> web : HTTPS :443
+web --> api : HTTPS REST API\n(CORS + JWT Bearer)
+api --> db : TLS / Mạng nội bộ :5432
+api --> payment : HTTPS (Checkout URL)
+payment ..> api : IPN & Return Callback\n(/payments/vnpay/ipn, /return)
+api ..> secrets : Đọc khi khởi động
 
 note right of web
-Chỉ dành cho Production:
-- CDN/cache tài nguyên công khai
-- không chứa thông tin DB
-- NEXT_PUBLIC_API_URL trỏ đến API
+Production Frontend (Vercel):
+- Edge CDN phục vụ static + SSR
+- Chỉ nhận biến công khai NEXT_PUBLIC_API_URL
+- Không chứa DB URL hay Secret thanh toán
 end note
 
 note right of api
-Kiểm tra sức khỏe: GET /health
-Log: stdout/stderr
-Tự khởi động lại khi lỗi
+Production API (Render :8080):
+- Health Check: GET /health (HTTP 200)
+- Lệnh dọn đơn quá hạn mỗi 15s (cửa sổ 10 phút)
+- Tự khởi động lại khi lỗi
 end note
 
 note bottom of registry
-Quản lý phiên bản Image bất biến:
-- Gắn thẻ (tag) theo commit SHA
-- Hỗ trợ rollback nhanh khi lỗi
+Quản lý Image bất biến trên GHCR:
+- Đẩy tự động cho cả brewlite-api và brewlite-web
+- Gắn tag commit SHA, latest và tag release v*.*.*
 end note
 
 note bottom of db
-Sao lưu, migration và thời hạn lưu trữ
-được quản lý riêng với quá trình deploy.
+PostgreSQL 16 được quản lý:
+- Chạy prisma migrate deploy trước khi khởi chạy
+- Không mở cổng DB ra Internet công cộng
 end note
 
 legend
   == Phân tách môi trường ==
-  Local: dịch vụ chạy trên máy lập trình viên; chỉ dùng localhost.
-  CI / Registry: đóng gói tự động, kiểm tra bảo mật, lưu trữ image tag bất biến.
-  Production: HTTPS công khai, đường truyền API/DB nội bộ,
-  secret được quản lý, health check và sao lưu bền vững.
+  Local: Docker Compose (db:5432, backend:8080, frontend:3000) chạy qua localhost.
+  CI/CD & Registry: GitHub Actions (Node 24) tự động test, build, đẩy image lên ghcr.io & chạy smoke test.
+  Production: Vercel (Web) + Render (API :8080 & Managed PostgreSQL) + VNPay Sandbox / Mock Payment.
 endlegend
 @enduml

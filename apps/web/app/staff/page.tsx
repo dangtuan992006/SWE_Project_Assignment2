@@ -18,10 +18,12 @@
  */
 
 import React, { useState, useEffect } from "react";
+import NextImage from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiClient } from "@/utils/apiClient";
 import { authStorage } from "@/utils/authStorage";
+import { isAllowedProductImageType } from "@/utils/security";
 import type { Order, OrderStatus, Ingredient, RecipeItem, Role, IngredientAuditLog, Size } from "@/types/brewlite";
 
 interface StaffOrderUser {
@@ -562,8 +564,8 @@ export default function StaffPortalPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
-      alert("Vui lòng chọn tệp hình ảnh hợp lệ (PNG, JPG, WEBP).");
+    if (!isAllowedProductImageType(file.type)) {
+      alert("Vui lòng chọn tệp hình ảnh hợp lệ (PNG, JPG, WEBP, GIF).");
       return;
     }
 
@@ -592,7 +594,7 @@ export default function StaffPortalPage() {
           const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
           setNewProdImage(dataUrl);
         } else {
-          setNewProdImage(event.target?.result as string);
+          alert("Không thể xử lý ảnh trên trình duyệt này. Vui lòng thử ảnh khác.");
         }
       };
       img.src = event.target?.result as string;
@@ -2119,9 +2121,12 @@ export default function StaffPortalPage() {
                 {newProdImage ? (
                   <div className="overflow-hidden rounded-xl border border-stone-200 bg-stone-50 p-2.5">
                     <div className="flex items-center space-x-3">
-                      <img
+                      <NextImage
                         src={newProdImage}
                         alt="Ảnh món preview"
+                        width={64}
+                        height={64}
+                        unoptimized
                         className="h-16 w-16 rounded-lg object-cover border border-stone-200 shadow-sm"
                       />
                       <div className="flex-1 min-w-0">

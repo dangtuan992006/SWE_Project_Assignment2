@@ -15,6 +15,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { authStorage } from "@/utils/authStorage";
+import { isStaffRole } from "@/utils/security";
 
 const emptySubscribe = () => () => {};
 
@@ -33,9 +34,8 @@ export default function StaffRoleGuard() {
 
     const checkRole = () => {
       const user = authStorage.getUser();
-      const isBarista = user?.role === "BARISTA";
 
-      if (isBarista) {
+      if (isStaffRole(user?.role)) {
         // Danh sách các tuyến đường nhân viên được phép hoạt động
         const isAllowed = pathname.startsWith("/staff") || pathname === "/login";
         if (!isAllowed) {

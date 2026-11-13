@@ -3,7 +3,7 @@
 # ============================================================================
 
 # Stage 1: Build mã nguồn Next.js
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
@@ -20,11 +20,11 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 # Tắt gửi dữ liệu telemetry của Next.js trong quá trình build
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Biên dịch Next.js (retry tự động nếu Next.js 16.4 hiển thị thông báo nâng cấp ở lần chạy đầu)
-RUN npm run build || npm run build
+# Biên dịch Next.js
+RUN npm run build
 
 # Stage 2: Runtime image tối ưu
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 
 WORKDIR /app
 

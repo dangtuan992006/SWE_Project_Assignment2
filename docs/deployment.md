@@ -10,32 +10,37 @@
 
 ![Sơ đồ triển khai Production](diagrams/deployment.svg)
 
-> **Ghi chú:** Các nhà cung cấp dịch vụ đám mây (Render, Railway, Fly.io, Vercel hoặc VPS) trong sơ đồ là ví dụ minh họa cho mô hình triển khai tách biệt giữa Web, API và Database.
+> **Kiến trúc triển khai thực tế:**
+> - **Frontend Web:** [Vercel](https://swe-project-assignment2.vercel.app) (`apps/web`, Next.js 16, Node 24)
+> - **Backend API:** [Render Cloud PaaS](https://brewlite-api-2tuk.onrender.com) (`apps/api`, NestJS Container `:8080`, Node 24)
+> - **Cơ sở dữ liệu:** Render Managed PostgreSQL 16 (Prisma ORM & `prisma migrate deploy`)
+> - **Container Registry:** GitHub Container Registry (`ghcr.io/<repo>/brewlite-api` & `brewlite-web`)
+> - **Cổng thanh toán:** VNPay Sandbox (HMAC-SHA512, Return URL & IPN; `PAYMENT_PROVIDER=VNPAY` bắt buộc trên Production) và Mock Payment Adapter cho môi trường phát triển cục bộ (`PAYMENT_PROVIDER=MOCK`)
 
 ---
 
 ## 1. Cấu trúc liên kết Runtime (Runtime Topology)
 
 ```text
-Trình duyệt / PWA (Khách hàng)
+Trình duyệt / PWA (Khách hàng & Staff Barista)
     │
-    │ HTTPS
+    │ HTTPS :443
     ▼
-Dịch vụ Web Next.js / CDN
+Vercel Web CDN (https://swe-project-assignment2.vercel.app)
     │
-    │ HTTPS REST (CORS allow-list)
+    │ HTTPS REST + CORS + JWT (Authorization: Bearer)
     ▼
-Dịch vụ API NestJS (Container :8080)
-    │                     \
-    │ TLS / Mạng nội bộ 5432\ HTTPS
-    ▼                       ▼
-PostgreSQL + Persistent Volume   Cổng thanh toán mô phỏng (Mock Payment)
+Render API Service (https://brewlite-api-2tuk.onrender.com -> Container :8080)
+    │                                \
+    │ TLS / Mạng nội bộ :5432         \ HTTPS (HMAC-SHA512 + Return/IPN)
+    ▼                                  ▼
+Render Managed PostgreSQL 16      VNPay Sandbox / Mock Payment Adapter
 ```
 
-- **Dịch vụ Web (Next.js):** Cung cấp giao diện người dùng và tài nguyên tĩnh (static assets). Dịch vụ này tuyệt đối không được phép nhận hoặc lưu trữ thông tin kết nối cơ sở dữ liệu.
-- **Dịch vụ API (NestJS):** Chạy ứng dụng backend NestJS. Ứng dụng lắng nghe trên biến môi trường `PORT` (mặc định `:8080`); tầng cân bằng tải / reverse proxy công khai của nền tảng sẽ xử lý HTTPS và chuyển tiếp traffic tới cổng này.
-- **Cơ sở dữ liệu (PostgreSQL):** Cơ sở dữ liệu quan hệ được quản lý với bộ lưu trữ bền vững (Persistent Volume), cơ chế tự động sao lưu định kỳ và kết nối mạng nội bộ riêng tư (Private Network).
-- **Cổng thanh toán mô phỏng (Mock Payment):** Chỉ được gọi trực tiếp từ tầng Backend API qua HTTPS. Mã nguồn phía Frontend tuyệt đối không lưu trữ khóa bí mật thanh toán.
+- **Dịch vụ Web (Vercel - Next.js):** Phục vụ toàn bộ 9 App Router routes (`/`, `/products/[id]`, `/cart`, `/orders`, `/orders/[id]`, `/login`, `/register`, `/staff`, `/UserProfile`) cùng static assets và `manifest.ts`. Dịch vụ Web tuyệt đối không chứa `DATABASE_URL` hay khóa bí mật thanh toán.
+- **Dịch vụ API (Render - NestJS):** Lắng nghe theo `PORT` (mặc định `8080`), cung cấp REST API, tài liệu Swagger (`/swagger`), endpoint liveness `GET /health` và tác vụ nền `OrderExpirationService` (quét hết hạn đơn `PENDING` sau 10 phút).
+- **Cơ sở dữ liệu (Render Managed PostgreSQL 16):** Lưu trữ bền vững toàn bộ 12 bảng Prisma (`categories`, `products`, `users`, `orders`, `order_items`, `payments`, `vouchers`, `loyalty_transactions`, `ingredients`, `recipe_items`, `refund_requests`, `ingredient_audit_logs`), kết nối qua TLS/Private Network.
+- **Cổng thanh toán (`PAYMENT_PROVIDER`):** Trên môi trường `NODE_ENV=production`, `PaymentConfiguration` bắt buộc `PAYMENT_PROVIDER=VNPAY` và ký giao dịch bằng HMAC-SHA512; cục bộ mặc định `MOCK` để phát triển và kiểm thử không cần merchant sandbox.
 
 ---
 
@@ -43,80 +48,78 @@ PostgreSQL + Persistent Volume   Cổng thanh toán mô phỏng (Mock Payment)
 
 | Môi trường | Mục đích sử dụng | Dữ liệu và Quản lý biến môi trường bí mật |
 | :--- | :--- | :--- |
-| **Local** | Môi trường máy cá nhân của lập trình viên, phục vụ viết mã và kiểm thử thủ công | Tệp `.env` không được đưa lên Git; các dịch vụ kết nối qua `localhost` |
-| **CI (Tích hợp liên tục)** | Cài đặt dependencies, chạy linter, kiểm thử tự động và kiểm tra build trên mỗi commit / PR | Chỉ sử dụng kho lưu trữ bí mật của hệ thống CI (GitHub Secrets); không kết nối đến DB Production |
-| **Production (Vận hành)** | Phục vụ lưu lượng truy cập thực tế của khách hàng | Secret được quản lý an toàn bởi nhà cung cấp đám mây, bắt buộc HTTPS, cơ sở dữ liệu bền vững và có sao lưu định kỳ |
+| **Local (Dev / Docker Compose)** | Chạy cục bộ qua `docker-compose.yml` (`db:5432` volume `pgdata`, `backend:8080`, `frontend:3000`) hoặc `npm run start:dev` / `npm run dev` | Sử dụng `.env` từ `apps/api/.env.example` và `apps/web/.env.example` (không commit lên Git); mặc định `PAYMENT_PROVIDER=MOCK` |
+| **CI/CD (GitHub Actions - Node 24)** | Kiểm tra lint (`oxlint` & `eslint`), chạy test API (`npm test`) & Web (`npm run test:vnpay`), build, push image lên GHCR (`ghcr.io`) và chạy smoke test (`--smoke`) | Dùng dịch vụ Postgres container riêng trên runner và GitHub Secrets (`PROD_API_URL`, `PROD_WEB_URL`, `BACKEND_DEPLOY_WEBHOOK`, `FRONTEND_DEPLOY_WEBHOOK`, `GITHUB_TOKEN`) |
+| **Production (Vercel + Render)** | Phục vụ lưu lượng thực tế cho Khách hàng và Staff Portal | Secret quản lý trong Vercel/Render Secret Store, bắt buộc HTTPS, `PAYMENT_PROVIDER=VNPAY`, DB lưu trữ bền vững |
 
-Tệp `apps/api/.env.example` trong repository là nguồn tham chiếu chuẩn cho các biến môi trường Backend:
+Tệp `apps/api/.env.example` là nguồn tham chiếu chuẩn cho Backend:
 
 ```dotenv
 PORT=8080
-DATABASE_URL=postgresql://user:password@localhost:5432/brewlite_db
-JWT_SECRET=super_secret_jwt_key_example
+DATABASE_URL=postgresql://admin:admin111@localhost:5432/brewlite_db?schema=public
+JWT_SECRET=super_secret_jwt_key_example_brewlite_2026
+FRONTEND_URL=http://localhost:3000
+CORS_ORIGIN=http://localhost:3000
+PAYMENT_PROVIDER=MOCK
+VNPAY_TMN_CODE=ma_tmn_code_duoc_cap
+VNPAY_HASH_SECRET=hash_secret_duoc_cap
+VNPAY_HOST=https://sandbox.vnpayment.vn
+VNPAY_TEST_MODE=true
+VNPAY_RETURN_URL=https://BACKEND-TUNNEL.trycloudflare.com/payments/vnpay/return
+VNPAY_IPN_URL=https://BACKEND-TUNNEL.trycloudflare.com/payments/vnpay/ipn
 ```
 
-Frontend chỉ nhận các cấu hình công khai không nhạy cảm, ví dụ địa chỉ API endpoint:
+Frontend (`apps/web/.env.example`) chỉ nhận biến công khai không nhạy cảm:
 
 ```dotenv
-NEXT_PUBLIC_API_URL=https://api.brewlite.example.com
+NEXT_PUBLIC_API_URL=http://localhost:8080
+NEXT_PUBLIC_VNPAY_ALLOWED_ORIGINS=https://sandbox.vnpayment.vn
 ```
+
+> Trên Production, `NEXT_PUBLIC_API_URL` trỏ đến `https://brewlite-api-2tuk.onrender.com`, còn `CORS_ORIGIN` / `FRONTEND_URL` ở Backend cấu hình cho `https://swe-project-assignment2.vercel.app`.
 
 ---
 
-## 3. Cấu hình triển khai Production
+## 3. Cấu hình triển khai & Container Registry
 
-### 3.1. Dịch vụ Web (Frontend - Next.js)
-1. Cấu hình thư mục gốc (Root Directory) trỏ về: `apps/web`.
-2. Lệnh cài đặt dependencies: `npm ci`.
-3. Lệnh build ứng dụng: `npm run build`.
-4. Lệnh khởi chạy: `npm run start`.
-5. Thiết lập biến môi trường `NEXT_PUBLIC_API_URL` trỏ đến endpoint HTTPS công khai của NestJS API.
-6. Cấu hình tên miền và chứng chỉ HTTPS (SSL/TLS).
+### 3.1. Dịch vụ Web (Vercel — `apps/web`)
+1. Root Directory: `apps/web` (Node.js 24, `apps/web/Dockerfile` dùng `node:24-alpine`).
+2. Cài đặt & Build: `npm ci` → `npm run build` (tạo thư mục build `.next` phục vụ chạy `npm start`).
+3. Khởi chạy: `npm run start`.
+4. Biến môi trường: `NEXT_PUBLIC_API_URL=https://brewlite-api-2tuk.onrender.com`, `NEXT_PUBLIC_VNPAY_ALLOWED_ORIGINS=https://sandbox.vnpayment.vn`.
 
-### 3.2. Dịch vụ API (Backend - NestJS)
-1. Cấu hình thư mục gốc (Root Directory) trỏ về: `apps/api`.
-2. Lệnh cài đặt dependencies: `npm ci`.
-3. Lệnh build ứng dụng: `npm run build`.
-4. Lệnh khởi chạy: `npm run start:prod`.
-5. Đặt biến môi trường `PORT` theo cổng do nhà cung cấp cấp phát (mặc định `8080`).
-6. Cấu hình an toàn các biến `DATABASE_URL` và `JWT_SECRET` trong bảng điều khiển bí mật của nền tảng (Secret Store).
-7. Thiết lập danh sách CORS cho phép (CORS allow-list) chính xác tên miền của Web Frontend.
-8. Cấu hình kiểm tra sức khỏe hệ thống (Health Check) tại endpoint `GET /health`.
+### 3.2. Dịch vụ API (Render — `apps/api`)
+1. Root Directory: `apps/api` (Node.js 24, `apps/api/Dockerfile` dùng `node:24-alpine`).
+2. Cài đặt, Migration & Build: `npm ci` → `npx prisma generate` → `npx prisma migrate deploy` → `npm run build`.
+3. Khởi chạy: `npm run start:prod` (cổng `PORT=8080`).
+4. Biến môi trường: `DATABASE_URL`, `JWT_SECRET`, `FRONTEND_URL`, `CORS_ORIGIN`, `PAYMENT_PROVIDER=VNPAY`, `VNPAY_TMN_CODE`, `VNPAY_HASH_SECRET`, `VNPAY_HOST`, `VNPAY_RETURN_URL`, `VNPAY_IPN_URL`.
+5. Health Check Path: `GET /health` (Swagger Docs tại `/swagger`).
 
-### 3.3. Cơ sở dữ liệu (PostgreSQL)
-- Khởi tạo PostgreSQL với Persistent Volume để đảm bảo dữ liệu không bị mất khi container khởi động lại.
-- Giới hạn quyền truy cập chỉ cho phép các kết nối đến từ Backend API hoặc mạng nội bộ (Private Network).
-- Bắt buộc mã hóa đường truyền TLS nếu cơ sở dữ liệu nằm ngoài mạng nội bộ của nhà cung cấp.
-- Thực hiện chạy Database Migration như một bước phát hành độc lập trước khi kích hoạt phiên bản code mới.
-- Thiết lập sao lưu định kỳ (Automated Backup) và thường xuyên kiểm tra tính khả thi của việc phục hồi dữ liệu.
+### 3.3. Cơ sở dữ liệu (Render Managed PostgreSQL 16)
+- Dữ liệu bền vững và backup tự động trên Render Managed PostgreSQL; chạy cục bộ qua volume `pgdata` trong `docker-compose.yml`.
+- Không mở cổng DB ra mạng công cộng; áp dụng migration trước khi khởi động phiên bản API mới.
+
+### 3.4. GitHub Container Registry (`ghcr.io`) & CI/CD Workflows
+- **`.github/workflows/ci.yml`:** Chạy trên Node 24 cho mọi push/PR tới `main`, `TV1..TV7`, `feature/*`; kiểm tra `npm run lint` (API `oxlint` & Web `eslint`), `npm test` (API), `npm run test:vnpay` (Web), `npm run build`.
+- **`.github/workflows/cd.yml`:** Kích hoạt khi push lên `main` hoặc push tag `v*.*.*` qua 4 giai đoạn:
+  1. `quality-gate`: chạy lại lint + unit tests (API & Web) trên Node 24 + Postgres 16 service.
+  2. `build`: kiểm tra `npx prisma generate`, `npm run build` cho Backend & Frontend.
+  3. `package-and-deploy`: đăng nhập `ghcr.io`, chạy `docker buildx build --push` cho **cả hai** image `ghcr.io/<repo>/brewlite-api` và `ghcr.io/<repo>/brewlite-web` (tags: `<commit_sha>`, `latest`, và `<tag_name>` nếu là release tag), sau đó gọi deploy webhook (`BACKEND_DEPLOY_WEBHOOK`, `FRONTEND_DEPLOY_WEBHOOK`).
+  4. `smoke-test`: vòng lặp kiểm tra HTTP 200 (tối đa 12 lần × 5 giây = 60 giây chờ Render cold-start) tới `${TARGET_URL}/health`, `${TARGET_URL}/swagger`, `${WEB_URL}` và chạy `node tests/e2e-checkout.flow.mjs --smoke "$TARGET_URL"`.
 
 ---
 
 ## 4. Mạng và Bảo mật (Networking & Security)
 
-- Toàn bộ lưu lượng Internet công cộng đều phải sử dụng giao thức **HTTPS**. Tự động chuyển hướng hoặc từ chối kết nối HTTP thông thường tại tầng Gateway/Edge.
-- Trình duyệt chỉ giao tiếp với Web Service và API Service qua HTTPS; tuyệt đối không mở cổng cơ sở dữ liệu ra Internet công cộng.
-- Chỉ cho phép địa chỉ IP của API Service truy cập vào cổng `5432` của PostgreSQL.
-- Bảo mật nghiêm ngặt `JWT_SECRET`, `DATABASE_URL` và các khóa thanh toán; không để lộ trong mã nguồn, gói bundle frontend, file ảnh Docker hay log hệ thống.
-- Thiết lập CORS chặt chẽ; không dùng wildcard (`*`) cho các yêu cầu có truyền cookie hoặc token xác thực.
-- Tự động ẩn (redact) các trường nhạy cảm trong log (Authorization headers, token, mật khẩu, database URL).
+- Toàn bộ lưu lượng Production sử dụng **HTTPS** (`swe-project-assignment2.vercel.app` & `brewlite-api-2tuk.onrender.com`).
+- CORS kiểm soát chặt chẽ theo `CORS_ORIGIN` / `FRONTEND_URL`.
+- `ValidationPipe` (`whitelist: true, transform: true, forbidNonWhitelisted: true`) và `AllExceptionsFilter` chặn dữ liệu thừa và ẩn stack trace.
+- Giao dịch VNPay xác thực chữ ký HMAC-SHA512; không tin cậy số tiền từ client.
 
 ---
 
-## 5. Vận hành, Giám sát và Kiểm tra sức khỏe
+## 5. Vận hành, Giám sát và Quy trình Phát hành / Rollback
 
-- Nền tảng hosting phải có cơ chế tự động khởi động lại container (Auto-restart) khi tiến trình API gặp lỗi đột ngột.
-- Endpoint Health Check xác nhận API đang phản hồi HTTP bình thường và kết nối Database vẫn hoạt động ổn định.
-- Xuất log có cấu trúc chuẩn ra `stdout`/`stderr` để hệ thống thu thập log của nhà cung cấp tự động lưu trữ; bổ sung Request Correlation ID để tiện theo dõi luồng request.
-- Thiết lập giám sát các chỉ số vận hành quan trọng: tỷ lệ lỗi HTTP 5xx, độ trễ API (latency), số lần restart, lỗi kết nối DB và các giao dịch thanh toán thất bại.
-
----
-
-## 6. Quy trình phát hành (Deployment Release Flow)
-
-1. **Kiểm tra tự động trên CI:** Chạy toàn bộ linter (`oxlint`), định dạng (`prettier`), unit test và build thử nghiệm của cả Frontend và Backend.
-2. **Áp dụng Migration:** Kiểm tra và chạy các tệp migration cập nhật cơ sở dữ liệu trong bước release được kiểm soát.
-3. **Triển khai Backend API:** Triển khai container API mới, kiểm tra endpoint `/health` và theo dõi log khởi động.
-4. **Triển khai Web Frontend:** Triển khai Frontend Next.js trỏ đến endpoint API mới đã hoạt động ổn định.
-5. **Kiểm thử khói (Smoke Test):** Kiểm tra nhanh các luồng nghiệp vụ cốt lõi: đăng nhập, xem danh sách menu, thêm món vào giỏ hàng, đặt hàng và xem lịch sử đơn.
-6. **Phương án dự phòng (Rollback):** Nếu phiên bản mới gặp sự cố nghiêm trọng, nhanh chóng rollback về image/build ổn định trước đó; việc khôi phục cơ sở dữ liệu chỉ thực hiện sau khi đã đánh giá độ an toàn của migration.
+1. **Giám sát & Health Check:** Render theo dõi `GET /health` và tự khởi động lại container nếu lỗi.
+2. **Kiểm tra sau phát hành:** Thực thi tự động trong `cd.yml` job `smoke-test` (`node tests/e2e-checkout.flow.mjs --smoke https://brewlite-api-2tuk.onrender.com`).
+3. **Rollback:** Hỗ trợ 4 kịch bản chi tiết trong `README.md` Mục 9 (Instant Rollback trên Vercel/Render, khôi phục Docker image tag trên GHCR, `git revert` trên `main`, và `prisma migrate resolve` / DB restore).
