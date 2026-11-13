@@ -25,7 +25,8 @@ Tài liệu này ghi nhận bằng chứng thực tế từ **GitHub Actions**, 
 | **CI Pipeline #14 (cho PR #2)** | `pull_request` (`TV1`) | `d7b5ec0` | ✅ PASS (BE 56s · FE 84s) | [`actions/runs/43062394947`](https://github.com/dangtuan992006/SWE_Project_Assignment2/actions/runs/43062394947) |
 | **CI Pipeline #15 (`main` mới nhất)** | `push` (`main`) | `ec999e2` | ✅ PASS (BE 63s · FE 79s) | [`actions/runs/43062824019`](https://github.com/dangtuan992006/SWE_Project_Assignment2/actions/runs/43062824019) |
 | **CD Pipeline #7 (`main` mới nhất)** | `push` (`main`) | `ec999e2` | ✅ PASS (4/4 stages) | [`actions/runs/43062823702`](https://github.com/dangtuan992006/SWE_Project_Assignment2/actions/runs/43062823702) |
-| **Pull Request #3 (`TV1 -> main`)** | `pull_request` (Đợt hoàn thiện & đối soát cuối) | *Chờ push* | ⏳ Chờ mở PR #3 | `[Chờ cập nhật URL PR #3 & Run ID CI sau khi push TV1]` |
+| **CI Pipeline #16 (`TV1` Stage 2)** | `push` (`TV1`) | `ea1b2fc` | ✅ PASS (2/2 jobs: BE 52s, FE 67s) | [`actions/runs/43388555504`](https://github.com/dangtuan992006/SWE_Project_Assignment2/actions/runs/43388555504) |
+| **Pull Request #3 (`TV1 -> main`)** | `pull_request` (Đợt hoàn thiện & đối soát cuối) | *Stage 3 local commits* | ⏳ Chờ user duyệt push Stage 3 & mở PR #3 | `[Chờ push Stage 3 lên TV1 & mở PR #3 -> main]` |
 
 > **Ghi chú các lần CD thất bại lịch sử trước khi hoàn thiện cấu hình secret & pipeline:**  
 > - [`actions/runs/41846006542`](https://github.com/dangtuan992006/SWE_Project_Assignment2/actions/runs/41846006542) (`c0fca08`) và [`actions/runs/41943044004`](https://github.com/dangtuan992006/SWE_Project_Assignment2/actions/runs/41943044004) (`b113e04`) thất bại tại bước `Trigger Backend API Deployment` do chưa có secret webhook; đã khắc phục ở commit `6a0e563` và chuẩn hóa đủ 4 giai đoạn ở `8dc678b`.
@@ -72,17 +73,16 @@ Trong quá trình xử lý cảnh báo lint ở commit `fd6d857`, lệnh `import
 > oxlint --type-aware src/ test/
 
 Found 0 warnings and 0 errors.
-Finished in 1.7s on 94 files with 111 rules using 12 threads.
+97 files checked with 111 rules.
 ```
 
 ```text
 > backend@0.0.1 test
 > node --experimental-vm-modules ./node_modules/jest/bin/jest.js
 
-Test Suites: 24 passed, 24 total
-Tests:       326 passed, 326 total
+Test Suites: 26 passed, 26 total
+Tests:       340 passed, 340 total
 Snapshots:   0 total
-Time:        6.257 s, estimated 7 s
 Ran all test suites.
 ```
 
@@ -92,7 +92,7 @@ Ran all test suites.
 (Exit Code 0)
 ```
 
-- **Kiểm thử E2E nội bộ NestJS (`npm run test:e2e --prefix apps/api` trên DB `brewlite_test`):** 1 suite, **4/4 tests PASS** (`Exit Code 0`).
+- **Kiểm thử E2E nội bộ NestJS (chạy ở Stage 2 `ea1b2fc` trên DB `brewlite_test`):** 1 suite, **4/4 tests PASS** (`Exit Code 0`; chưa chạy lại ở Stage 3 do Docker Desktop đang tắt).
 
 #### Frontend (`apps/web` — Next.js 16.4.0 Turbopack, ESLint v9.39.5)
 ```text
@@ -102,26 +102,25 @@ Ran all test suites.
 ```
 
 ```text
-> frontend@0.1.0 test:vnpay
-> node tests/vnpay-payment.test.mjs
+> frontend@0.1.0 test
+> node --test tests/*.test.mjs
 
-ℹ tests 28
+ℹ tests 31
 ℹ suites 0
-ℹ pass 28
+ℹ pass 31
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 1059.0125
 ```
+*(Gồm `tests/security-utils.test.mjs` 3/3 pass và `tests/vnpay-payment.test.mjs` 28/28 pass; `npm run test:vnpay` riêng lẻ đạt 28/28 pass).*
 
 ```text
 > frontend@0.1.0 build
 > next build
 
 ▲ Next.js 16.4.0 (Turbopack)
-✓ Compiled successfully in 795ms
-✓ Generating static pages using 11 workers (13/13) in 713ms
+✓ Compiled & generated static pages (13/13 static pages)
 
 Route (app)
 ┌ ○ /
@@ -140,9 +139,10 @@ Route (app)
 ```
 
 #### Root Black-box E2E & Integration (`tests/`)
-- `node tests/e2e-checkout.flow.mjs` (local `:8080`, cả 2 chế độ `PAYMENT_PROVIDER=MOCK` và `VNPAY`): **9/9 bước PASS** (xác thực `Idempotent-Replayed: true` ở `MOCK` và URL `https://sandbox.vnpayment.vn` ở `VNPAY`).
-- `node --test tests/e2e-integration.spec.ts` (Node 24 native runner trên `:8080`): **2 suites / 6 tests PASS** (`Exit Code 0`).
-- `node tests/e2e-checkout.flow.mjs --smoke https://brewlite-api-2tuk.onrender.com`: **4/4 kiểm tra chỉ đọc PASS** (`GET /health`, `GET /products`, `GET /products/:id`, `GET /payments/config`).
+- `node tests/e2e-checkout.flow.mjs` (local `:8080`, cả 2 chế độ `PAYMENT_PROVIDER=MOCK` và `VNPAY` — chạy tại Stage 2 `ea1b2fc`): **9/9 bước PASS** (xác thực `Idempotent-Replayed: true` ở `MOCK` và URL `https://sandbox.vnpayment.vn` ở `VNPAY`; chưa chạy lại ở Stage 3 do Docker Postgres cục bộ đang tắt).
+- `node --test tests/e2e-integration.spec.ts` (Node 24 native runner trên `:8080` — chạy tại Stage 2 `ea1b2fc`): **2 suites / 6 tests PASS** (`Exit Code 0`; chưa chạy lại ở Stage 3 do Docker Postgres cục bộ đang tắt).
+- `node tests/e2e-checkout.flow.mjs --smoke https://brewlite-api-2tuk.onrender.com` (chạy lại ở Stage 3): **4/4 kiểm tra chỉ đọc PASS** (`GET /health`, `GET /products`, `GET /products/:id`, `GET /payments/config`).
+- **Browser UI E2E (Stage 3):** Đã xác minh trên `http://localhost:3102` (bản build `TV1`) và `https://swe-project-assignment2.vercel.app` (sản phẩm, bộ lọc, giỏ hàng, `/login`, `/register`, `/UserProfile`, `StaffRoleGuard` trên `/staff`, layout mobile `390x844`).
 
 ---
 
@@ -150,12 +150,13 @@ Route (app)
 
 | Tầng kiểm tra | Công cụ thực thi | Lệnh kiểm tra | Điều kiện vượt qua (Pass Criteria) | Trạng thái |
 | :--- | :--- | :--- | :--- | :---: |
-| **Static Lint Backend** | Oxlint (`oxlint --type-aware`) | `npm run lint` (`apps/api`) | 0 warnings, 0 errors trên 94 files / 111 rules | ✅ PASSED |
+| **Static Lint Backend (Stage 3)** | Oxlint (`oxlint --type-aware`) | `npm run lint` (`apps/api`) | 0 warnings, 0 errors trên 97 files / 111 rules | ✅ PASSED |
 | **Static Lint Frontend** | ESLint (`eslint-config-next`) | `npm run lint` (`apps/web`) | 0 warnings, 0 errors | ✅ PASSED |
 | **Khởi tạo ORM** | Prisma CLI (`v6.19.3`) | `npx prisma generate` | Sinh mã Client khớp 100% `schema.prisma` (12 models, 9 enums) | ✅ PASSED |
-| **Unit & Integration BE** | Jest (`--experimental-vm-modules`) | `npm test` (`apps/api`) | 24 suites / 326 tests đạt 100% | ✅ PASSED |
+| **Unit & Integration BE (Stage 3)** | Jest (`--experimental-vm-modules`) | `npm test` (`apps/api`) | 26 suites / 340 tests đạt 100% | ✅ PASSED |
 | **Unit Test Thanh toán FE** | Node.js 24 Test Runner | `npm run test:vnpay` (`apps/web`) | 28 / 28 tests pass (`vnpay-payment.test.mjs`) | ✅ PASSED |
-| **E2E & HTTP Integration** | NestJS Supertest & Node 24 | `npm run test:e2e`, `e2e-checkout.flow.mjs`, `node --test tests/e2e-integration.spec.ts` | 4 NestJS E2E + 9 bước flow + 6 HTTP tests + `--smoke` pass | ✅ PASSED |
+| **Full Unit & Security FE (Stage 3)** | Node.js Test Runner | `npm test` (`apps/web`) | 31 / 31 tests pass (`security-utils.test.mjs` + `vnpay-payment.test.mjs`) | ✅ PASSED |
+| **E2E & HTTP Integration** | NestJS Supertest, Node 24 & Browser UI | `npm run test:e2e`, `e2e-checkout.flow.mjs`, `e2e-integration.spec.ts` | Stage 2 `ea1b2fc` (4 BE E2E + 9 bước flow + 6 HTTP tests); Stage 3 (`--smoke` 4/4 + Browser UI E2E) | ✅ PASSED (scope ghi chú) |
 | **Biên dịch Backend** | NestJS CLI | `npm run build` (`apps/api`) | Biên dịch TypeScript sang `dist/` sạch sẽ (`Exit Code 0`) | ✅ PASSED |
 | **Biên dịch Frontend** | Next.js 16.4.0 Turbopack | `npm run build` (`apps/web`) | 13/13 static pages, 11 route entries App Router (`Exit Code 0`) | ✅ PASSED |
 | **Cấu hình Docker & CI/CD** | Docker Compose & PyYAML | `docker compose config --quiet`, YAML parse | Hợp lệ cấu hình `ci.yml`, `cd.yml` (Node 24 + GHCR push + strict `--smoke`) | ✅ PASSED |
