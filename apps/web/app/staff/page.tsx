@@ -1,4 +1,5 @@
 "use client";
+import RefundStaffActions from "@/components/RefundStaffActions";
 
 /**
  * ============================================================================
@@ -7,7 +8,7 @@
  *
  * Chức năng dành riêng cho Barista & Quản lý cửa hàng:
  * 1. Thông tin Staff & Chỉnh sửa họ tên (Đồng bộ với UserProfile).
- * 2. Quản lý trạng thái đơn hàng (Order State Queue & Hoàn tiền).
+ * 2. Quản lý trạng thái đơn hàng (Order State Queue & Hoàn điểm).
  * 3. Quản lý kho nguyên liệu:
  *    - Thêm nguyên liệu mới, Sửa nguyên liệu, Xóa nguyên liệu.
  *    - Lịch sử thay đổi nguyên liệu (Audit Log) đồng bộ mọi Staff theo thời gian thực.
@@ -324,30 +325,6 @@ export default function StaffPortalPage() {
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : "Cập nhật trạng thái thất bại.";
-      setOrderMessage({ type: "error", text: errMsg });
-    } finally {
-      setUpdatingOrderId(null);
-    }
-  };
-
-  // Handler: Chấp nhận hoàn tiền cho đơn hàng
-  const handleApproveRefund = async (orderId: string) => {
-    const confirmApprove = window.confirm(
-      "Bạn có chắc chắn muốn chấp nhận hoàn tiền cho đơn hàng này không? Đơn sẽ chuyển sang trạng thái ĐÃ HỦY và tiền sẽ được hoàn trả cho khách."
-    );
-    if (!confirmApprove) return;
-
-    setUpdatingOrderId(orderId);
-    setOrderMessage(null);
-    try {
-      const res = await apiClient.post<{ message: string }>(`/orders/${orderId}/approve-refund`);
-      setOrderMessage({
-        type: "success",
-        text: res.message || "Đã phê duyệt hoàn tiền thành công!",
-      });
-      await fetchOrders();
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : "Phê duyệt hoàn tiền thất bại.";
       setOrderMessage({ type: "error", text: errMsg });
     } finally {
       setUpdatingOrderId(null);
@@ -694,7 +671,7 @@ export default function StaffPortalPage() {
   // Lọc đơn hàng theo filter
   const filteredOrders = orders.filter((o) => {
     if (orderFilter === "ALL") return true;
-    if (orderFilter === "REFUND_PENDING") return o.refundRequest?.status === "PENDING";
+    if (orderFilter === "REFUND_PENDING") return ["PENDING", "PROCESSING", "UNKNOWN", "FAILED", "APPROVED"].includes(o.refundRequest?.status ?? "");
     return o.status === orderFilter;
   });
 
@@ -826,7 +803,7 @@ export default function StaffPortalPage() {
                   { id: "PREPARING", label: "Đang pha chế" },
                   { id: "READY", label: "Chờ lấy nước" },
                   { id: "COMPLETED", label: "Hoàn tất" },
-                  { id: "REFUND_PENDING", label: "⚠️ Yêu cầu hoàn tiền" },
+                  { id: "REFUND_PENDING", label: "⚠️ Yêu cầu hoàn điểm" },
                   { id: "CANCELLED", label: "Đã hủy" },
                 ] as const
               ).map((tab) => (
@@ -944,33 +921,7 @@ export default function StaffPortalPage() {
                         </div>
                       </div>
 
-                      {/* Banner Cảnh báo Yêu cầu hoàn tiền */}
-                      {hasPendingRefund && (
-                        <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-900">
-                          <div className="flex items-center space-x-1 font-bold text-red-800">
-                            <span>⚠️ Yêu cầu hủy đơn & hoàn tiền</span>
-                          </div>
-                          <p className="mt-1 text-stone-700">
-                            Khách yêu cầu hoàn:{" "}
-                            <strong className="text-red-800">
-                              {Number(order.refundRequest?.amount || 0).toLocaleString("vi-VN")}đ
-                            </strong>
-                          </p>
-                          {order.refundRequest?.reason && (
-                            <p className="mt-0.5 italic text-stone-600">
-                              Lý do: &ldquo;{order.refundRequest.reason}&rdquo;
-                            </p>
-                          )}
-                          <button
-                            type="button"
-                            disabled={isUpdating}
-                            onClick={() => handleApproveRefund(order.id || order.orderId || "")}
-                            className="mt-2.5 w-full rounded-lg bg-red-600 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
-                          >
-                            {isUpdating ? "Đang xử lý..." : "✓ Chấp nhận duyệt hoàn tiền"}
-                          </button>
-                        </div>
-                      )}
+                      {order.refundRequest && <RefundStaffActions orderId={order.id || order.orderId || ""} refund={order.refundRequest} onChanged={fetchOrders} />}
 
                       {/* Chi tiết danh sách món */}
                       <div className="mt-3 space-y-1.5 border-t border-stone-100 pt-3">
@@ -995,7 +946,7 @@ export default function StaffPortalPage() {
 
                     {/* NÚT THAO TÁC CHUYỂN TRẠNG THÁI ĐƠN */}
                     <div className="mt-4 border-t border-stone-100 pt-3">
-                      {order.status === "PAID" && (
+                      {order.status === "PAID" && !hasPendingRefund && (
                         <button
                           type="button"
                           disabled={isUpdating}

@@ -26,7 +26,10 @@ Tài liệu này ghi nhận bằng chứng thực tế từ **GitHub Actions**, 
 | **CI Pipeline #15 (`main` mới nhất)** | `push` (`main`) | `ec999e2` | ✅ PASS (BE 63s · FE 79s) | [`actions/runs/43062824019`](https://github.com/dangtuan992006/SWE_Project_Assignment2/actions/runs/43062824019) |
 | **CD Pipeline #7 (`main` mới nhất)** | `push` (`main`) | `ec999e2` | ✅ PASS (4/4 stages) | [`actions/runs/43062823702`](https://github.com/dangtuan992006/SWE_Project_Assignment2/actions/runs/43062823702) |
 | **CI Pipeline #16 (`TV1` Stage 2)** | `push` (`TV1`) | `ea1b2fc` | ✅ PASS (2/2 jobs: BE 52s, FE 67s) | [`actions/runs/43388555504`](https://github.com/dangtuan992006/SWE_Project_Assignment2/actions/runs/43388555504) |
-| **Pull Request #3 (`TV1 -> main`)** | `pull_request` (Đợt hoàn thiện & đối soát cuối) | *Stage 3 local commits* | ⏳ Chờ user duyệt push Stage 3 & mở PR #3 | `[Chờ push Stage 3 lên TV1 & mở PR #3 -> main]` |
+| **Pull Request #3 (`TV1 -> main`)** | `pull_request` (12 commits, 59 files) | `d6e3286` (merge) | ✅ Merged | [`pull/3`](https://github.com/dangtuan992006/SWE_Project_Assignment2/pull/3) |
+| **CI Pipeline #18 (cho PR #3)** | `pull_request` (`TV1`) | `3e5a633` | ✅ PASS (BE 51s · FE 71s) | [`actions/runs/43396485038`](https://github.com/dangtuan992006/SWE_Project_Assignment2/actions/runs/43396485038) |
+| **CI Pipeline #19 (`main` sau PR #3)** | `push` (`main`) | `d6e3286` | ✅ PASS (BE 54s · FE 69s) | [`actions/runs/43398030024`](https://github.com/dangtuan992006/SWE_Project_Assignment2/actions/runs/43398030024) |
+| **CD Pipeline #8 (`main` Production Delivery)** | `push` (`main`) | `d6e3286` | ✅ PASS (4/4 stages: Gate, Build, GHCR, Smoke) | [`actions/runs/43398030036`](https://github.com/dangtuan992006/SWE_Project_Assignment2/actions/runs/43398030036) |
 
 > **Ghi chú các lần CD thất bại lịch sử trước khi hoàn thiện cấu hình secret & pipeline:**  
 > - [`actions/runs/41846006542`](https://github.com/dangtuan992006/SWE_Project_Assignment2/actions/runs/41846006542) (`c0fca08`) và [`actions/runs/41943044004`](https://github.com/dangtuan992006/SWE_Project_Assignment2/actions/runs/41943044004) (`b113e04`) thất bại tại bước `Trigger Backend API Deployment` do chưa có secret webhook; đã khắc phục ở commit `6a0e563` và chuẩn hóa đủ 4 giai đoạn ở `8dc678b`.

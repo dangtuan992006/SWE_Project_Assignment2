@@ -35,6 +35,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
+import { RejectRefundDto, ResolveRefundDto } from './dto/refund-action.dto';
 import { OrdersService } from './orders.service';
 
 interface AuthenticatedUser {
@@ -248,11 +249,13 @@ export class OrdersController {
   @Roles(Role.BARISTA, Role.ADMIN)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Cập nhật trạng thái đơn hàng (Dành cho Barista / Quản lý - Task 10.1)',
+    summary:
+      'Cập nhật trạng thái đơn hàng (Dành cho Barista / Quản lý - Task 10.1)',
   })
   @ApiParam({ name: 'id', format: 'uuid', description: 'Mã UUID của đơn hàng' })
   @ApiOkResponse({
-    description: 'Đơn hàng được chuyển trạng thái thành công theo State Machine.',
+    description:
+      'Đơn hàng được chuyển trạng thái thành công theo State Machine.',
     schema: { example: Order_Example },
   })
   @ApiForbiddenResponse({
@@ -260,15 +263,24 @@ export class OrdersController {
   })
   @ApiBadRequestResponse({
     description: 'id không phải UUID hoặc trạng thái mới không hợp lệ.',
-    schema: { example: Error_Example(400, 'Trạng thái đơn hàng không hợp lệ.') },
+    schema: {
+      example: Error_Example(400, 'Trạng thái đơn hàng không hợp lệ.'),
+    },
   })
   @ApiConflictResponse({
     description: 'Chuyển đổi trạng thái vi phạm quy tắc State Machine.',
-    schema: { example: Error_Example(409, 'Không thể chuyển đơn hàng từ PENDING sang COMPLETED.') },
+    schema: {
+      example: Error_Example(
+        409,
+        'Không thể chuyển đơn hàng từ PENDING sang COMPLETED.',
+      ),
+    },
   })
   @ApiNotFoundResponse({
     description: 'Không tìm thấy đơn hàng cần cập nhật.',
-    schema: { example: Error_Example(404, 'Không tìm thấy đơn hàng cần cập nhật.') },
+    schema: {
+      example: Error_Example(404, 'Không tìm thấy đơn hàng cần cập nhật.'),
+    },
   })
   updateStatus(
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -286,7 +298,7 @@ export class OrdersController {
   @ApiBearerAuth()
   @ApiOperation({
     summary:
-      'Khách hàng yêu cầu hủy đơn (PENDING -> hủy ngay, PAID -> gửi yêu cầu hoàn tiền cho Staff, PREPARING/READY/COMPLETED -> chặn)',
+      'Khách hàng yêu cầu hủy đơn (PENDING -> hủy ngay, PAID -> yêu cầu hoàn bằng điểm cho Staff, PREPARING/READY/COMPLETED -> chặn)',
   })
   cancelOrder(
     @CurrentUser() user: AuthenticatedUser,
@@ -301,7 +313,7 @@ export class OrdersController {
   @Roles(Role.BARISTA, Role.ADMIN)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Nhân viên chấp nhận duyệt hoàn tiền cho đơn hàng',
+    summary: 'Nhân viên duyệt hủy đơn và hoàn vào điểm tài khoản',
   })
   @ApiForbiddenResponse({
     description: 'Chỉ nhân viên (BARISTA/ADMIN) mới có quyền thực hiện.',
@@ -311,5 +323,35 @@ export class OrdersController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     return this.ordersService.approveRefund(id, user.email);
+  }
+  @Post(':id/reject-refund')
+  @UseGuards(RolesGuard)
+  @Roles(Role.BARISTA, Role.ADMIN)
+  @ApiOperation({ summary: 'Từ chối yêu cầu hoàn tiền đang chờ duyệt' })
+  rejectRefund(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: RejectRefundDto,
+  ) {
+    return this.ordersService.rejectRefund(id, user.email, dto.reason);
+  }
+
+  @Post(':id/resolve-refund')
+  @UseGuards(RolesGuard)
+  @Roles(Role.BARISTA, Role.ADMIN)
+  @ApiOperation({
+    summary: 'Chỉ đối soát lượt hoàn tiền cũ đã gửi trước chính sách hoàn điểm',
+  })
+  resolveRefund(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: ResolveRefundDto,
+  ) {
+    return this.ordersService.resolveRefund(
+      id,
+      user.email,
+      dto.status,
+      dto.evidence,
+    );
   }
 }

@@ -158,6 +158,7 @@ export interface OrderDetail {
  * Thực thể Đơn hàng lưu trữ trong Cơ sở dữ liệu (FR-12, FR-14)
  */
 export interface Order {
+  refundRequest?: RefundRequestInfo | null;
   id: string;             // Khóa chính UUID của đơn hàng
   orderCode: string;      // Mã đơn hiển thị dạng thân thiện cho khách (ví dụ: "#1042")
   userId: string;         // ID người dùng sở hữu đơn hàng
@@ -279,4 +280,20 @@ export interface ApiResponse<T> {
   message?: string;       // Thông báo kết quả cho người dùng
   statusCode?: number;    // Mã trạng thái HTTP (200, 201, 400, 404, 500...)
   timestamp?: string;     // Mốc thời gian xử lý yêu cầu
+}
+
+/** Full refund request; APPROVED is a legacy approval, not proof of payout. */
+export interface RefundRequestInfo {
+  id: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED' | 'UNKNOWN';
+  amount: number | string;
+  refundMethod?: 'POINTS' | 'CASH';
+  refundPoints?: number | null;
+  vndPerPoint?: number | null;
+  provider?: PaymentProvider | null;
+  reason?: string | null;
+  message?: string | null;
+  processedBy?: string | null;
+  processedAt?: string | null;
+  completedAt?: string | null;
 }

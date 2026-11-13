@@ -1,0 +1,22 @@
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'IngredientLogAction') THEN
+    CREATE TYPE "IngredientLogAction" AS ENUM ('CREATE', 'RESTOCK', 'UPDATE', 'DELETE', 'ORDER_DEDUCT', 'ORDER_REFUND');
+  ELSE
+    ALTER TYPE "IngredientLogAction" ADD VALUE IF NOT EXISTS 'ORDER_REFUND';
+  END IF;
+END $$;
+CREATE TABLE IF NOT EXISTS "ingredient_audit_logs" (
+  "id" TEXT NOT NULL,
+  "ingredient_id" TEXT,
+  "ingredient_name" TEXT NOT NULL,
+  "action" "IngredientLogAction" NOT NULL,
+  "change_amount" DECIMAL(10,2),
+  "previous_stock" DECIMAL(10,2),
+  "new_stock" DECIMAL(10,2),
+  "unit" TEXT NOT NULL,
+  "reason" TEXT,
+  "performed_by" TEXT,
+  "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "ingredient_audit_logs_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "ingredient_audit_logs_created_at_idx" ON "ingredient_audit_logs"("created_at");

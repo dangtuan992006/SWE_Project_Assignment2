@@ -157,14 +157,22 @@ export interface OrderDetail {
 /**
  * Yêu cầu hoàn tiền khi hủy đơn PAID (RefundRequest)
  */
+/** Full refund request; APPROVED is a legacy approval, not proof of payout. */
 export interface RefundRequestInfo {
   id: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'PROCESSING' | 'SUCCEEDED' | 'FAILED' | 'UNKNOWN';
   amount: number | string;
-  reason?: string;
+  refundMethod?: 'POINTS' | 'CASH';
+  refundPoints?: number | null;
+  vndPerPoint?: number | null;
+  provider?: PaymentProvider | null;
+  reason?: string | null;
+  message?: string | null;
   processedBy?: string | null;
   processedAt?: string | null;
+  completedAt?: string | null;
 }
+
 
 /**
  * Thực thể Đơn hàng lưu trữ trong Cơ sở dữ liệu (FR-12, FR-14)
