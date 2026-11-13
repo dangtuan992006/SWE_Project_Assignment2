@@ -18,7 +18,7 @@
  */
 
 import React, { useState, useEffect } from "react";
-import Image from "next/image";
+import NextImage from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiClient } from "@/utils/apiClient";
@@ -2120,7 +2120,7 @@ export default function StaffPortalPage() {
                 {newProdImage ? (
                   <div className="overflow-hidden rounded-xl border border-stone-200 bg-stone-50 p-2.5">
                     <div className="flex items-center space-x-3">
-                      <Image
+                      <NextImage
                         src={newProdImage}
                         alt="Ảnh món preview"
                         width={64}
