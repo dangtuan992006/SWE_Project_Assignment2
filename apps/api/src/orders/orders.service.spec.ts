@@ -55,23 +55,32 @@ function storedOrder(over: Record<string, unknown> = {}) {
 }
 
 function makeService() {
-  const tx = {
+  const orderDelegates = {
+    create: jest.fn(),
+    findFirst: jest.fn().mockResolvedValue(null),
+    findMany: jest.fn().mockResolvedValue([]),
+    findUnique: jest.fn().mockResolvedValue(null),
+    update: jest.fn(),
+  };
+  const tx: any = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     product: {
       findMany: jest.fn().mockResolvedValue([product]),
       update: jest.fn(),
       updateMany: jest.fn(),
     },
-    order: { create: jest.fn() },
-  };
-  const prisma = {
-    order: {
-      findFirst: jest.fn().mockResolvedValue(null),
-      findMany: jest.fn().mockResolvedValue([]),
-      findUnique: jest.fn().mockResolvedValue(null),
-      update: jest.fn(),
+    order: orderDelegates,
+    payment: {
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
+  };
+  const prisma: any = {
+    order: orderDelegates,
     $transaction: jest.fn((cb: (t: typeof tx) => unknown) => cb(tx)),
   };
+  Object.defineProperty(tx, 'refundRequest', {
+    get: () => prisma.refundRequest,
+  });
   const service = new OrdersService(prisma as never);
   return { service, prisma, tx };
 }
@@ -412,6 +421,69 @@ describe('OrdersService.findOneForUser', () => {
       expect(result.success).toBe(true);
       expect(result.isRefundPending).toBe(true);
       expect(prisma.refundRequest.upsert).toHaveBeenCalled();
+    });
+  });
+
+  describe('approveRefund Security & State Machine (F-05)', () => {
+    it('chặn approveRefund khi đơn đã chuyển sang PREPARING (không thể hủy/hoàn tiền ngang)', async () => {
+      const { service, prisma } = makeService();
+      (prisma as any).refundRequest = {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'ref-1',
+          orderId: 'order-1',
+          status: 'PENDING',
+          order: storedOrder({ status: OrderStatus.PREPARING }),
+        }),
+        update: jest.fn(),
+      };
+      prisma.order.findUnique.mockResolvedValue(storedOrder({ status: OrderStatus.PREPARING }));
+      (prisma as any).payment = { updateMany: jest.fn() };
+
+      await expect(service.approveRefund('order-1', 'staff@brewlite.vn')).rejects.toThrow(
+        ConflictException,
+      );
+      expect((prisma as any).refundRequest.update).not.toHaveBeenCalled();
+      expect(prisma.order.update).not.toHaveBeenCalled();
+    });
+
+    it('duyệt hoàn tiền đơn PAID: khóa đơn FOR UPDATE, chuyển Payment sang REFUNDED và Order sang CANCELLED', async () => {
+      const orderPaid = storedOrder({ status: OrderStatus.PAID });
+      const txMock = {
+        $queryRaw: jest.fn().mockResolvedValue([{ id: 'order-1' }]),
+        refundRequest: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'ref-1',
+            orderId: 'order-1',
+            status: 'PENDING',
+          }),
+          update: jest.fn().mockResolvedValue({ id: 'ref-1', status: 'APPROVED' }),
+        },
+        order: {
+          findUnique: jest.fn().mockResolvedValue(orderPaid),
+          update: jest.fn().mockResolvedValue(storedOrder({ status: OrderStatus.CANCELLED })),
+        },
+        payment: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+      };
+      const prismaMock = {
+        refundRequest: txMock.refundRequest,
+        order: txMock.order,
+        $transaction: jest.fn((cb: (t: typeof txMock) => unknown) => cb(txMock)),
+      };
+      const { OrdersService: OrdersSvc } = await import('./orders.service');
+      const svc = new OrdersSvc(prismaMock as never);
+
+      const res = await svc.approveRefund('order-1', 'staff@brewlite.vn');
+
+      expect(txMock.$queryRaw).toHaveBeenCalledTimes(1);
+      expect(txMock.payment.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { orderId: 'order-1', status: 'SUCCESS' },
+          data: expect.objectContaining({ status: 'REFUNDED' }),
+        }),
+      );
+      expect(res.order.status).toBe(OrderStatus.CANCELLED);
     });
   });
 });
