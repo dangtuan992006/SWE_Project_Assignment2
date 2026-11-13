@@ -1,8 +1,8 @@
 const { config } = require('dotenv');
-const { resolve } = require('node:path');
+const path = require('node:path');
 
 function loadTestEnvironment() {
-  const result = config({ path: resolve(__dirname, '../.env.test'), override: true });
+  const result = config({ path: path.resolve(__dirname, '../.env.test'), override: true });
   if (result.error) throw new Error('Không đọc được backend/.env.test.');
   if (!process.env.DATABASE_URL) throw new Error('Thiếu DATABASE_URL trong .env.test.');
 

@@ -13,6 +13,7 @@
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { json, urlencoded } from 'express';
 import { AppModule, ObserveInstrument } from './app.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import 'dotenv/config';
@@ -24,6 +25,10 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     instrument: ObserveInstrument,
   });
+
+  // Hỗ trợ upload ảnh Base64 cho sản phẩm với dung lượng lên đến 10MB
+  app.use(json({ limit: '10mb' }));
+  app.use(urlencoded({ extended: true, limit: '10mb' }));
 
   // Kích hoạt xử lý tắt ứng dụng an toàn (Prisma disconnect)
   app.enableShutdownHooks();

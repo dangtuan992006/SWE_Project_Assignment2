@@ -11,9 +11,9 @@ graphify-out/
 
 # Build output and caches
 dist/
-backend/dist/
-frontend/.next/
-frontend/out/
+apps/api/dist/
+apps/web/.next/
+apps/web/out/
 build/
 */build/
 .cache/
@@ -42,12 +42,11 @@ coverage/
 .env
 .env.*
 !.env.example
-backend/.env
-backend/.env.*
-!backend/.env.example
-frontend/.env
-frontend/.env.*
-!frontend/.env.example
+apps/api/.env*
+!apps/api/.env.example
+!apps/api/.env.test.example
+apps/web/.env*
+!apps/web/.env.example
 
 # Local credentials and private keys
 *.pem

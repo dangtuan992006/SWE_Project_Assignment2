@@ -3,8 +3,8 @@
 - **Dự án:** BrewLite — Ứng dụng đặt cà phê không dùng tiền mặt
 - **Môn học:** Công nghệ Phần mềm, Trường Đại học Sài Gòn
 - **Phương pháp phát triển:** Agile Scrum
-- **Phiên bản:** 0.2 (bản tích hợp)
-- **Trạng thái:** Draft — cần nhóm rà soát và thống nhất
+- **Phiên bản:** 1.0 (Approved)
+- **Trạng thái:** Approved — Đã thống nhất và đối chiếu mã nguồn
 
 ---
 
@@ -37,23 +37,21 @@ BrewLite là ứng dụng đặt cà phê không dùng tiền mặt. Phạm vi n
 
 ## 2. Tổng quan hệ thống
 
-### 2.1. Công nghệ dự kiến
-- Backend: NestJS, TypeScript.
-- Frontend: Next.js, React, TypeScript, TailwindCSS.
-- Cơ sở dữ liệu: PostgreSQL, sẽ tích hợp trong task sau.
-- Đóng gói môi trường: Docker theo yêu cầu của nhóm.
+### 2.1. Công nghệ sử dụng
+- Backend: NestJS, TypeScript, Prisma ORM.
+- Frontend: Next.js (App Router), React, TypeScript, TailwindCSS, Zustand.
+- Cơ sở dữ liệu: PostgreSQL (Docker / Render Managed PostgreSQL) kết hợp Prisma ORM.
+- Đóng gói & triển khai: Docker, Docker Compose, GitHub Actions CI/CD, GHCR, Vercel & Render.
 - Quản lý mã nguồn: Git và GitHub.
 
 ### 2.2. Tác nhân và bên liên quan
-| Bên liên quan / tác nhân | Mối quan tâm chính |
+| Bên liên quan / tác nhân | Vai trò RBAC / Mối quan tâm chính |
 |---|---|
-| Khách hàng | Tìm sản phẩm, tùy chỉnh đồ uống, đặt hàng và thanh toán thuận tiện |
-| Nhóm phát triển | Yêu cầu rõ ràng, có thể triển khai và kiểm thử |
-| Trưởng nhóm | Theo dõi tiến độ, review và tích hợp thay đổi |
-| Giảng viên | Đánh giá quy trình, tài liệu và sản phẩm đồ án |
-| Dịch vụ thanh toán bên ngoài (nếu tích hợp) | Xử lý giao dịch và trả kết quả thanh toán |
-
-Vai trò nhân viên/quản trị viên và quyền hạn tương ứng cần được xác nhận trước khi đưa vào phạm vi chính thức.
+| Khách hàng (`CUSTOMER`) | Tìm sản phẩm, tùy chỉnh đồ uống, quản lý giỏ hàng, áp dụng voucher/đổi điểm thưởng, đặt hàng, thanh toán không dùng tiền mặt, xem lịch sử đơn và gửi yêu cầu hủy/hoàn tiền |
+| Nhân viên pha chế (`BARISTA`) | Truy cập Staff Portal (`/staff`), xem danh sách đơn hàng toàn hệ thống, cập nhật trạng thái pha chế (`PREPARING` → `READY` → `COMPLETED`), quản lý kho nguyên liệu, công thức và duyệt yêu cầu hoàn tiền |
+| Quản trị viên (`ADMIN`) | Toàn quyền vận hành của `BARISTA` cùng quản lý sản phẩm/công thức, tồn kho nguyên liệu, nhật ký kiểm toán kho (`IngredientAuditLog`) và cấu hình hệ thống |
+| Dịch vụ thanh toán bên ngoài (`VNPAY` Sandbox / `MOCK`) | Tiếp nhận yêu cầu khởi tạo giao dịch, xử lý luồng thanh toán và trả kết quả qua Return URL / IPN |
+| Nhóm phát triển, Trưởng nhóm & Giảng viên | Yêu cầu rõ ràng, đồng bộ kiến trúc, có thể triển khai và kiểm thử tự động |
 
 ### 2.3. Sơ đồ Use Case tổng quát
 
@@ -276,7 +274,7 @@ Hệ thống BrewLite được phân chia thành các nhóm ca sử dụng chín
 
 | Tên chức năng | Mô tả | Tác nhân | Điều kiện trước | Ràng buộc / Ngoại lệ | Ưu tiên |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| Thanh toán không tiền mặt | Cho phép khách hàng thanh toán đơn hàng bằng Ví điện tử hoặc Thẻ ngân hàng qua cổng thanh toán mô phỏng (Mock Payment). | Customer (Khách hàng), Mock Payment Gateway | Đơn hàng thuộc người dùng hiện tại và đang ở trạng thái `PENDING` (hoặc thử lại từ `PAYMENT_FAILED`). | Phương thức hợp lệ gồm Ví điện tử hoặc Thẻ ngân hàng; chống thanh toán trùng qua `Idempotency-Key`; kiểm tra chuyển trạng thái hợp lệ. | Must |
+| Thanh toán không tiền mặt | Cho phép khách hàng thanh toán đơn hàng bằng Ví điện tử hoặc Thẻ ngân hàng qua cổng thanh toán `VNPAY` Sandbox hoặc dịch vụ mô phỏng `MOCK` (`PAYMENT_PROVIDER`). | Customer (Khách hàng), Payment Gateway (`VNPAY` Sandbox / `MOCK`) | Đơn hàng thuộc người dùng hiện tại và đang ở trạng thái `PENDING` (hoặc thử lại từ `PAYMENT_FAILED`). | Phương thức hợp lệ gồm Ví điện tử hoặc Thẻ ngân hàng; chống thanh toán trùng qua `Idempotency-Key`; kiểm tra chuyển trạng thái hợp lệ trong cửa sổ 10 phút (`ORDER_PAYMENT_WINDOW_MS`). | Must |
 
 **Acceptance Criteria:**
 - **AC-13.1:** Khi giỏ hàng có ít nhất 1 sản phẩm → giao diện hiển thị tổng số tiền cần thanh toán và cho phép khách hàng lựa chọn phương thức thanh toán không tiền mặt (Ví điện tử hoặc Thẻ ngân hàng).
@@ -308,6 +306,31 @@ Hệ thống BrewLite được phân chia thành các nhóm ca sử dụng chín
 - **AC-15.3:** Khi người dùng chưa đăng nhập yêu cầu xem lịch sử đơn → hệ thống từ chối truy cập và yêu cầu đăng nhập.
 - **AC-15.4:** Giao diện hiển thị trạng thái đang tải (Loading State) trong khi chờ dữ liệu và hiển thị thông báo lỗi (Error State) nếu kết nối thất bại.
 
+#### 3.4.5. FR-16 - Khuyến mãi (Voucher) và Đổi điểm thưởng (Loyalty)
+
+| Tên chức năng | Mô tả | Tác nhân | Điều kiện trước | Ràng buộc / Ngoại lệ | Ưu tiên |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| Khuyến mãi (Voucher) & Đổi điểm thưởng | Cho phép khách hàng xem danh sách voucher khả dụng, kiểm tra/áp dụng mã giảm giá vào đơn hàng, tích lũy điểm thưởng khi thanh toán thành công và đổi điểm lấy voucher mới. | Customer (Khách hàng) | Khách hàng đã đăng nhập khi đổi điểm (`POST /promotions/redeem-points`) hoặc đặt đơn áp dụng voucher; giỏ hàng có sản phẩm hợp lệ khi áp dụng voucher (`POST /promotions/apply`). | Mã voucher phải đang kích hoạt (`isActive`), còn hiệu lực (`startDate`/`endDate`), còn lượt dùng (`usedCount < usageLimit`), và đạt giá trị đơn tối thiểu (`minOrderValue`). Tỷ lệ tích điểm: 10.000đ = 1 điểm (`EARN`). Đổi điểm hỗ trợ các gói `REWARD10K` (10 điểm), `REWARD20K` (20 điểm), `REWARD50K` (50 điểm) tạo voucher `FIXED_AMOUNT` dùng 1 lần, ghi lịch sử `LoyaltyTransaction` (`REDEEM`). | Should |
+
+**Acceptance Criteria:**
+- **AC-16.1:** Khi gọi `GET /promotions/vouchers` → hệ thống trả về danh sách các voucher đang hoạt động (`isActive = true`), chưa hết hạn và còn lượt sử dụng.
+- **AC-16.2:** Khi nhập mã voucher và gọi `POST /promotions/apply` → backend xác thực điều kiện hợp lệ, tính đúng `discountAmount` (theo `PERCENTAGE` có giới hạn `maxDiscount` hoặc `FIXED_AMOUNT`, không vượt giá trị đơn) và trả về `finalAmount`.
+- **AC-16.3:** Khi thanh toán thành công một đơn hàng → backend cộng điểm thưởng (`floor(totalAmount / 10000)`) vào `User.loyaltyPoints` và ghi bản ghi `LoyaltyTransaction` loại `EARN`.
+- **AC-16.4:** Khi khách hàng gọi `POST /promotions/redeem-points` với `rewardId` hợp lệ và đủ điểm → hệ thống trừ điểm tương ứng, tạo voucher mới dạng `FIXED_AMOUNT` (`minOrderValue = 2 * discountValue`, hạn 30 ngày) và ghi bản ghi `LoyaltyTransaction` loại `REDEEM`.
+
+#### 3.4.6. FR-17 - Quản lý trạng thái đơn hàng, Staff Portal, Kho nguyên liệu & Hoàn tiền
+
+| Tên chức năng | Mô tả | Tác nhân | Điều kiện trước | Ràng buộc / Ngoại lệ | Ưu tiên |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| Staff Portal, Quản lý trạng thái đơn, Kho nguyên liệu & Hoàn tiền | Cung cấp giao diện vận hành quầy pha chế (`/staff`) cho nhân viên/quản trị viên theo dõi toàn bộ đơn hàng, chuyển trạng thái pha chế hợp lệ, quản lý nguyên liệu/công thức định lượng và xử lý yêu cầu hủy đơn/hoàn tiền. | Barista, Admin, Customer (gửi hủy đơn) | Tài khoản `BARISTA` hoặc `ADMIN` đăng nhập hợp lệ (xác thực qua `JwtAuthGuard` và `RolesGuard`). | Mọi API `/orders/staff/all`, `/orders/:id/status`, `/orders/:id/approve-refund` và `/inventory/*` bắt buộc quyền `BARISTA` hoặc `ADMIN`. Chỉ chấp nhận chuyển trạng thái hợp lệ theo Order State Machine (`PAID` → `PREPARING` → `READY` → `COMPLETED`). Đơn `PENDING`/`PAYMENT_FAILED` do khách hủy (`POST /orders/:id/cancel`) chuyển ngay `CANCELLED`; đơn `PAID` tạo `RefundRequest` (`PENDING`) chờ Staff duyệt (`POST /orders/:id/approve-refund`) để chuyển `RefundRequest` sang `APPROVED` và `Order` sang `CANCELLED`. Tự động trừ kho nguyên liệu theo `RecipeItem` (size S/M/L), đồng bộ `Product.stock` (`recalculate-stock`) và ghi `IngredientAuditLog`. | Must |
+
+**Acceptance Criteria:**
+- **AC-17.1:** Người dùng có vai trò `CUSTOMER` truy cập các endpoint `/orders/staff/all`, `/orders/:id/status`, `/orders/:id/approve-refund` hoặc `/inventory/*` → hệ thống từ chối với mã `403 Forbidden`.
+- **AC-17.2:** Nhân viên `BARISTA`/`ADMIN` đăng nhập vào `/staff` → xem được toàn bộ danh sách đơn hàng (`GET /orders/staff/all`) kèm thông tin khách hàng và yêu cầu hoàn tiền (nếu có), đồng thời chuyển trạng thái hợp lệ qua `PATCH /orders/:id/status`.
+- **AC-17.3:** Khi cố gắng chuyển trạng thái trái quy tắc State Machine (ví dụ `COMPLETED` → `PENDING` hoặc `PENDING` → `READY`) → hệ thống từ chối (`409 Conflict`).
+- **AC-17.4:** Khi khách hủy đơn `PAID` → hệ thống tạo `RefundRequest` trạng thái `PENDING`; khi `BARISTA`/`ADMIN` gọi `POST /orders/:id/approve-refund` → cập nhật `RefundRequest.status = APPROVED` (ghi `processedBy`, `processedAt`) và chuyển `Order.status = CANCELLED`.
+- **AC-17.5:** Nhân viên quản lý đầy đủ nguyên liệu (`GET/POST/PATCH/DELETE /inventory/ingredients`, nhập kho `PATCH /inventory/ingredients/:id/stock`), công thức theo size (`GET /inventory/recipes`, `POST /inventory/products`, `PUT /inventory/products/:id/recipes`), xem lịch sử biến động kho (`GET /inventory/ingredients/logs`) và đồng bộ tồn kho sản phẩm (`POST /inventory/recalculate-stock`).
+
 ---
 
 ## 4. Yêu cầu phi chức năng (NFR)
@@ -333,6 +356,7 @@ Hệ thống BrewLite được phân chia thành các nhóm ca sử dụng chín
 | NFR-17 | Hướng dẫn khởi chạy | Repository phải có hướng dẫn cài đặt, cấu hình và chạy các thành phần cần thiết, gồm các điều kiện tiên quyết và cách kiểm tra ứng dụng đã khởi động thành công. | Should Have |
 | NFR-18 | Tương thích trình duyệt | Giao diện phải được kiểm tra trên các trình duyệt phổ biến mà nhóm thống nhất hỗ trợ; lỗi hiển thị hoặc thao tác chính phải được ghi nhận và xử lý trong phạm vi dự án. | Should Have |
 | NFR-19 | Luồng thao tác dễ hiểu | Các bước xem sản phẩm, tùy chỉnh đồ uống, quản lý giỏ hàng và đặt hàng phải có nhãn rõ ràng, trình tự hợp lý và phản hồi sau thao tác. | Should Have |
+| NFR-20 | Tự động hóa CI/CD | Quy trình GitHub Actions (`ci.yml`, `cd.yml`) phải tự động kiểm tra lint, chạy kiểm thử (Unit/Integration/E2E), build production, đóng gói Docker image đẩy lên GHCR, triển khai tự động và chạy smoke test kiểm chứng sau deploy. | Must Have |
 
 **Quy ước MoSCoW:**
 - **Must Have:** Bắt buộc để đạt mục tiêu và yêu cầu cốt lõi của phiên bản.

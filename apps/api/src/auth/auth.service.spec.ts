@@ -13,6 +13,10 @@ describe('AuthService (FR-01 & FR-02 with Prisma)', () => {
     user: {
       findUnique: jest.fn(),
       create: jest.fn(),
+      update: jest.fn(),
+    },
+    order: {
+      findMany: jest.fn().mockResolvedValue([]),
     },
   };
 
@@ -99,6 +103,27 @@ describe('AuthService (FR-01 & FR-02 with Prisma)', () => {
       ).rejects.toThrow(
         new UnauthorizedException('Email hoặc mật khẩu không đúng'),
       );
+    });
+  });
+
+  describe('getProfile (F-02 Bảo toàn điểm thưởng)', () => {
+    it('không tự ý cộng bù điểm lại khi user đã dùng điểm đổi voucher dù đơn còn trạng thái PAID', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        id: 'user-uuid-1',
+        email: 'test@brewlite.vn',
+        fullName: 'Khách hàng',
+        role: 'CUSTOMER',
+        loyaltyPoints: 0,
+        createdAt: new Date(),
+      });
+      mockPrismaService.order.findMany.mockResolvedValue([
+        { totalAmount: 100000 },
+      ]);
+
+      const profile = await service.getProfile('user-uuid-1');
+
+      expect(profile.loyaltyPoints).toBe(0);
+      expect(mockPrismaService.user.update).not.toHaveBeenCalled();
     });
   });
 });

@@ -285,7 +285,11 @@ export class OrdersController {
   updateStatus(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: UpdateOrderStatusDto,
+    @CurrentUser() user?: AuthenticatedUser,
   ) {
+    if (user?.id) {
+      return this.ordersService.updateStatus(id, dto.status, user.id);
+    }
     return this.ordersService.updateStatus(id, dto.status);
   }
 

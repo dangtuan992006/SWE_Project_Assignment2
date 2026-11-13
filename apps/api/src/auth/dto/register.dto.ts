@@ -1,6 +1,6 @@
 // backend/src/auth/dto/register.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @ApiProperty({
@@ -19,6 +19,7 @@ export class RegisterDto {
   @IsString()
   @IsNotEmpty({ message: 'Mật khẩu không được để trống' })
   @MinLength(6, { message: 'Mật khẩu phải có tối thiểu 6 ký tự' })
+  @MaxLength(72, { message: 'Mật khẩu không được vượt quá 72 ký tự' })
   password: string;
 
   @ApiPropertyOptional({
@@ -27,5 +28,6 @@ export class RegisterDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(120)
   fullName?: string;
 }

@@ -5,11 +5,12 @@ import React, { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { apiClient } from '@/utils/apiClient';
+import { sanitizeRedirectPath } from '@/utils/security';
 
 function RegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectUrl = searchParams.get('redirect') || '/';
+  const redirectUrl = sanitizeRedirectPath(searchParams.get('redirect'));
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');

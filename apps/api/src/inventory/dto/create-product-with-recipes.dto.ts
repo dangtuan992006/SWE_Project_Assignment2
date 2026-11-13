@@ -5,6 +5,8 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Matches,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -62,6 +64,14 @@ export class CreateProductWithRecipesDto {
   @ApiPropertyOptional({ description: 'URL ảnh món', example: 'https://images.unsplash.com/...' })
   @IsOptional()
   @IsString()
+  @MaxLength(2000000)
+  @Matches(
+    /^(|https?:\/\/\S+|\/\S*|data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+)$/i,
+    {
+      message:
+        'URL ảnh chỉ chấp nhận HTTP(S), đường dẫn nội bộ hoặc ảnh raster base64 hợp lệ (không hỗ trợ SVG/script).',
+    },
+  )
   imageUrl?: string;
 
   @ApiPropertyOptional({ description: 'Danh sách công thức theo nguyên liệu và size', type: [RecipeItemInputDto] })

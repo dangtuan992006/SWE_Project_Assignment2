@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { apiClient } from "@/utils/apiClient";
 import { authStorage } from "@/utils/authStorage";
+import { isStaffRole, sanitizeRedirectPath } from "@/utils/security";
 
 interface LoginResponse {
   accessToken: string;
@@ -21,7 +22,7 @@ interface LoginResponse {
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectUrl = searchParams.get("redirect") || "/";
+  const redirectUrl = sanitizeRedirectPath(searchParams.get("redirect"));
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -31,13 +32,11 @@ function LoginForm() {
   useEffect(() => {
     if (authStorage.getToken()) {
       const user = authStorage.getUser();
-      if (user?.role === "BARISTA") {
+      if (isStaffRole(user?.role)) {
         router.replace("/staff");
         return;
       }
-      const destination =
-        redirectUrl && redirectUrl !== "/" ? redirectUrl : "/UserProfile";
-      router.replace(destination);
+      router.replace(redirectUrl);
     }
   }, [redirectUrl, router]);
 
@@ -54,15 +53,13 @@ function LoginForm() {
 
       authStorage.setSession(response.accessToken, response.user);
 
-      // Nếu là Staff (BARISTA) -> Vào thẳng /staff
-      if (response.user.role === "BARISTA") {
+      // Nếu là Staff (BARISTA/ADMIN) -> Vào thẳng /staff
+      if (isStaffRole(response.user.role)) {
         router.push("/staff");
         return;
       }
 
-      const destination =
-        redirectUrl && redirectUrl !== "/" ? redirectUrl : "/UserProfile";
-      router.push(destination);
+      router.push(redirectUrl);
     } catch (err: unknown) {
       setError(
         err instanceof Error ? err.message : "Email hoặc mật khẩu không đúng",

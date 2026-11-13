@@ -19,10 +19,12 @@ import RefundStaffActions from "@/components/RefundStaffActions";
  */
 
 import React, { useState, useEffect } from "react";
+import NextImage from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiClient } from "@/utils/apiClient";
 import { authStorage } from "@/utils/authStorage";
+import { isAllowedProductImageType } from "@/utils/security";
 import type { Order, OrderStatus, Ingredient, RecipeItem, Role, IngredientAuditLog, Size } from "@/types/brewlite";
 
 interface StaffOrderUser {
@@ -290,6 +292,7 @@ export default function StaffPortalPage() {
       }
 
       setStaffProfileMessage("Đã cập nhật họ tên thành công!");
+      void fetchAuditLogs();
       setTimeout(() => {
         setIsEditingStaffName(false);
         setStaffProfileMessage(null);
@@ -533,6 +536,49 @@ export default function StaffPortalPage() {
     }
   };
 
+  // Handler: Chọn ảnh từ máy tính của người dùng và nén Base64
+  const handleProductImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!isAllowedProductImageType(file.type)) {
+      alert("Vui lòng chọn tệp hình ảnh hợp lệ (PNG, JPG, WEBP, GIF).");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 800;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+          setNewProdImage(dataUrl);
+        } else {
+          alert("Không thể xử lý ảnh trên trình duyệt này. Vui lòng thử ảnh khác.");
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
   // Handler: Kích hoạt tính lại toàn bộ tồn kho đồ uống
   const handleRecalculateStock = async () => {
     setIsRecalculating(true);
@@ -671,15 +717,7 @@ export default function StaffPortalPage() {
               </div>
             </div>
 
-            <div className="flex items-center space-x-2">
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="rounded-xl border border-amber-700/80 bg-amber-950/40 px-4 py-2 text-xs font-semibold text-amber-100 transition hover:bg-amber-950/70"
-              >
-                Đăng xuất
-              </button>
-            </div>
+
           </div>
         </div>
 
@@ -2028,14 +2066,65 @@ export default function StaffPortalPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-stone-600">URL ảnh minh họa</label>
-                <input
-                  type="text"
-                  value={newProdImage}
-                  onChange={(e) => setNewProdImage(e.target.value)}
-                  placeholder="https://images.unsplash.com/... (để trống sẽ dùng ảnh mặc định)"
-                  className="mt-1 w-full rounded-xl border border-stone-300 p-2 text-xs font-semibold focus:border-amber-700 focus:outline-none"
-                />
+                <label className="block text-xs font-semibold text-stone-600 mb-1">
+                  Hình ảnh sản phẩm
+                </label>
+                {newProdImage ? (
+                  <div className="overflow-hidden rounded-xl border border-stone-200 bg-stone-50 p-2.5">
+                    <div className="flex items-center space-x-3">
+                      <NextImage
+                        src={newProdImage}
+                        alt="Ảnh món preview"
+                        width={64}
+                        height={64}
+                        unoptimized
+                        className="h-16 w-16 rounded-lg object-cover border border-stone-200 shadow-sm"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-stone-800">Đã chọn ảnh thành công</p>
+                        <p className="text-[11px] text-stone-500 truncate">Ảnh đã sẵn sàng lưu cho sản phẩm</p>
+                        <button
+                          type="button"
+                          onClick={() => setNewProdImage("")}
+                          className="mt-1 inline-flex items-center text-xs font-bold text-red-600 hover:text-red-700"
+                        >
+                          ✕ Xóa ảnh / Chọn ảnh khác
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label
+                      htmlFor="prod-image-file"
+                      className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-stone-300 bg-stone-50 p-4 text-center cursor-pointer hover:border-amber-700 hover:bg-amber-50/60 transition"
+                    >
+                      <span className="text-2xl mb-1">📁</span>
+                      <span className="text-xs font-bold text-amber-900">
+                        Chọn ảnh từ máy tính của bạn
+                      </span>
+                      <span className="text-[11px] text-stone-500 mt-0.5">
+                        Tự động nén tối ưu (PNG, JPG, WEBP)
+                      </span>
+                    </label>
+                    <input
+                      id="prod-image-file"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleProductImageFileChange}
+                      className="hidden"
+                    />
+                    <div className="mt-2">
+                      <input
+                        type="text"
+                        value={newProdImage}
+                        onChange={(e) => setNewProdImage(e.target.value)}
+                        placeholder="Hoặc nhập URL ảnh trực tiếp (tùy chọn)..."
+                        className="w-full rounded-xl border border-stone-200 p-2 text-[11px] text-stone-600 focus:border-amber-700 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex space-x-3 pt-2">

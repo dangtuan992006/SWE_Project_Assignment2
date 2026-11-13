@@ -27,6 +27,26 @@ export class InventoryService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
+   * Tra cứu họ tên đầy đủ (fullName) mới nhất của nhân viên từ CSDL.
+   * Đảm bảo mọi bản ghi Lịch sử kho hiển thị đúng tên nhân viên thay vì email hoặc fallback tĩnh.
+   */
+  async getStaffPerformerName(userId?: string): Promise<string> {
+    if (!userId) return 'Nhân viên Pha chế';
+    try {
+      if (this.prisma?.user) {
+        const staff = await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { fullName: true, email: true },
+        });
+        return staff?.fullName || staff?.email || 'Nhân viên Pha chế';
+      }
+    } catch {
+      // Fallback nếu có lỗi
+    }
+    return 'Nhân viên Pha chế';
+  }
+
+  /**
    * Lấy danh sách toàn bộ nguyên liệu kèm trạng thái cảnh báo tồn kho
    */
   async getAllIngredients(): Promise<IngredientWithStatus[]> {

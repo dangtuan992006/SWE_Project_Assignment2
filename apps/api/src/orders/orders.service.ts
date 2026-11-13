@@ -217,7 +217,20 @@ export class OrdersService {
   }
 
   /** Cập nhật trạng thái đơn hàng (Dành cho Barista/Admin chuyển trạng thái pha chế hoặc hủy) */
-  async updateStatus(orderId: string, targetStatus: OrderStatus) {
+  async updateStatus(orderId: string, targetStatus: OrderStatus, performedById?: string) {
+    let performerName = 'Nhân viên Pha chế';
+    if (targetStatus === OrderStatus.PREPARING && this.inventoryService && performedById) {
+      try {
+        const staffUser = await this.prisma.user?.findUnique({
+          where: { id: performedById },
+          select: { fullName: true, email: true },
+        });
+        performerName = staffUser?.fullName || staffUser?.email || performerName;
+      } catch {
+        // Fallback nếu có lỗi
+      }
+    }
+
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "orders" WHERE "id" = ${orderId} FOR UPDATE`;
       const order = await tx.order.findUnique({
@@ -252,7 +265,7 @@ export class OrdersService {
         await this.inventoryService.deductIngredientsForOrder(
           tx,
           orderId,
-          'Nhân viên Pha chế',
+          performerName,
         );
       }
       return this.toResponse(updated);

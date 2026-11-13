@@ -55,30 +55,38 @@ function storedOrder(over: Record<string, unknown> = {}) {
 }
 
 function makeService() {
-  const tx = {
+  const orderDelegates = {
+    create: jest.fn(),
+    findFirst: jest.fn().mockResolvedValue(null),
+    findMany: jest.fn().mockResolvedValue([]),
+    findUnique: jest.fn().mockResolvedValue(null),
+    findUniqueOrThrow: jest.fn(),
+    update: jest.fn(),
+    updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+  };
+  orderDelegates.findUniqueOrThrow.mockImplementation(() => orderDelegates.findUnique());
+  const tx: any = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     product: {
       findMany: jest.fn().mockResolvedValue([product]),
       update: jest.fn(),
       updateMany: jest.fn(),
     },
-    $queryRaw: jest.fn(),
-    order: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+    order: orderDelegates,
   };
-  const prisma = {
-    order: {
-      findFirst: jest.fn().mockResolvedValue(null),
-      findMany: jest.fn().mockResolvedValue([]),
+  const prisma: any = {
+    order: orderDelegates,
+    user: {
       findUnique: jest.fn().mockResolvedValue(null),
-      update: jest.fn(),
-      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-      findUniqueOrThrow: jest.fn(),
     },
     $transaction: jest.fn((cb: (t: typeof tx) => unknown) => cb(tx)),
   };
-  tx.order.findUnique = prisma.order.findUnique;
-  tx.order.update = prisma.order.update;
-  prisma.order.findUniqueOrThrow.mockImplementation(() => prisma.order.findUnique());
-  const refunds = { request: jest.fn().mockResolvedValue({ status: 'PENDING', message: 'Đang chờ duyệt' }) };
+  const refunds = {
+    request: jest.fn().mockResolvedValue({ status: 'PENDING', message: 'Đang chờ duyệt' }),
+    approve: jest.fn().mockResolvedValue({ id: 'ref-1', status: 'SUCCEEDED', message: 'Đã hoàn điểm thành công.' }),
+    reject: jest.fn().mockResolvedValue({ id: 'ref-1', status: 'REJECTED', message: 'Đã từ chối.' }),
+    resolve: jest.fn().mockResolvedValue({ id: 'ref-1', status: 'SUCCEEDED', message: 'Đã đối soát.' }),
+  };
   const service = new OrdersService(prisma as never, undefined, undefined, undefined, refunds as never);
   return { service, prisma, tx, refunds };
 }
@@ -431,6 +439,46 @@ describe('OrdersService.findOneForUser', () => {
       const { service, prisma } = makeService();
       prisma.order.findUnique.mockResolvedValue(storedOrder({ status: 'PAID' }));
       await expect(service.updateStatus('order-1', OrderStatus.CANCELLED)).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('approveRefund Delegation & updateStatus Inventory Audit', () => {
+    it('ủy quyền duyệt hoàn điểm sang RefundsService và trả về đơn CANCELLED', async () => {
+      const { service, prisma, refunds } = makeService();
+      prisma.order.findUnique.mockResolvedValue(storedOrder({ status: OrderStatus.CANCELLED }));
+
+      const res = await service.approveRefund('order-1', 'staff@brewlite.vn');
+
+      expect(refunds.approve).toHaveBeenCalledWith('order-1', 'staff@brewlite.vn');
+      expect(res.success).toBe(true);
+      expect(res.order.status).toBe(OrderStatus.CANCELLED);
+    });
+
+    it('updateStatus truyền đúng tên nhân viên thực hiện khi trừ nguyên liệu nếu chưa trừ lúc thanh toán', async () => {
+      const { prisma, tx, refunds } = makeService();
+      const orderPaid = storedOrder({ status: OrderStatus.PAID, paidIngredientDeductions: null });
+      const orderPrep = storedOrder({ status: OrderStatus.PREPARING, paidIngredientDeductions: null });
+      prisma.order.findUnique.mockResolvedValue(orderPaid);
+      prisma.order.update.mockResolvedValue(orderPrep);
+      prisma.user.findUnique.mockResolvedValue({ fullName: 'Nguyễn Barista', email: 'barista@brewlite.vn' });
+      const inventoryService = { deductIngredientsForOrder: jest.fn().mockResolvedValue(undefined) };
+
+      const svc = new OrdersService(
+        prisma as never,
+        undefined,
+        undefined,
+        inventoryService as never,
+        refunds as never,
+      );
+
+      await svc.updateStatus('order-1', OrderStatus.PREPARING, 'staff-id-1');
+
+      expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+      expect(inventoryService.deductIngredientsForOrder).toHaveBeenCalledWith(
+        tx,
+        'order-1',
+        'Nguyễn Barista',
+      );
     });
   });
 });
