@@ -115,26 +115,6 @@ export class AuthService {
       throw new NotFoundException('Không tìm thấy thông tin người dùng.');
     }
 
-    // Tự động đồng bộ bù điểm thưởng cho tất cả các đơn hàng PAID của người dùng
-    const paidOrders = await this.prisma.order.findMany({
-      where: { userId, status: 'PAID' },
-      select: { totalAmount: true },
-    });
-
-    const totalPaidAmount = paidOrders.reduce(
-      (sum, o) => sum + Number(o.totalAmount),
-      0,
-    );
-    const expectedPoints = Math.floor(totalPaidAmount / 10000);
-
-    if (expectedPoints > user.loyaltyPoints) {
-      await this.prisma.user.update({
-        where: { id: userId },
-        data: { loyaltyPoints: expectedPoints },
-      });
-      user.loyaltyPoints = expectedPoints;
-    }
-
     return user;
   }
 

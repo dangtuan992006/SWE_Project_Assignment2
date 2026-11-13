@@ -8,6 +8,7 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
+import { getJwtSecret } from './jwt-secret';
 
 @Module({
   imports: [
@@ -15,7 +16,7 @@ import { RolesGuard } from './guards/roles.guard';
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       useFactory: () => ({
-        secret: process.env.JWT_SECRET || 'brewlite_dev_secret_key',
+        secret: getJwtSecret(),
         signOptions: { expiresIn: '24h' },
       }),
     }),

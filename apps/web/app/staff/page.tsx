@@ -23,6 +23,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiClient } from "@/utils/apiClient";
 import { authStorage } from "@/utils/authStorage";
+import { isAllowedProductImageType } from "@/utils/security";
 import type { Order, OrderStatus, Ingredient, RecipeItem, Role, IngredientAuditLog, Size } from "@/types/brewlite";
 
 interface StaffOrderUser {
@@ -563,8 +564,8 @@ export default function StaffPortalPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
-      alert("Vui lòng chọn tệp hình ảnh hợp lệ (PNG, JPG, WEBP).");
+    if (!isAllowedProductImageType(file.type)) {
+      alert("Vui lòng chọn tệp hình ảnh hợp lệ (PNG, JPG, WEBP, GIF).");
       return;
     }
 
@@ -593,7 +594,7 @@ export default function StaffPortalPage() {
           const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
           setNewProdImage(dataUrl);
         } else {
-          setNewProdImage(event.target?.result as string);
+          alert("Không thể xử lý ảnh trên trình duyệt này. Vui lòng thử ảnh khác.");
         }
       };
       img.src = event.target?.result as string;

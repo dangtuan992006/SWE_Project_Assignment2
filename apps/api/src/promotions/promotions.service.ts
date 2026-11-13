@@ -9,6 +9,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApplyVoucherDto, ApplyVoucherResult } from './dto/apply-voucher.dto';
 import { DiscountType } from '../common/types/brewlite';
@@ -147,24 +148,37 @@ export class PromotionsService {
   }
 
   /**
-   * Lấy danh sách các mã giảm giá đang kích hoạt, còn hạn sử dụng và còn lượt dùng
+   * Lấy danh sách các mã giảm giá công khai đang kích hoạt, còn hạn sử dụng và còn lượt dùng
    */
   async getAvailableVouchers() {
     const now = new Date();
+    const personalPrefixes = Object.values(REWARD_OPTIONS).map(
+      (opt) => `${opt.prefix}-`,
+    );
+
     const vouchers = await this.prisma.voucher.findMany({
       where: {
         isActive: true,
         OR: [{ endDate: null }, { endDate: { gte: now } }],
+        NOT: personalPrefixes.map((prefix) => ({
+          code: { startsWith: prefix },
+        })),
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    return vouchers.filter(
-      (voucher) =>
+    return vouchers.filter((voucher) => {
+      const normalizedCode = String(voucher.code ?? '').toUpperCase();
+      if (personalPrefixes.some((prefix) => normalizedCode.startsWith(prefix))) {
+        return false;
+      }
+
+      return (
         voucher.usageLimit === null ||
         voucher.usageLimit === undefined ||
-        Number(voucher.usedCount ?? 0) < Number(voucher.usageLimit),
-    );
+        Number(voucher.usedCount ?? 0) < Number(voucher.usageLimit)
+      );
+    });
   }
 
   /**
@@ -178,25 +192,31 @@ export class PromotionsService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const user = await tx.user.findUnique({
-        where: { id: userId },
+      const debit = await tx.user.updateMany({
+        where: {
+          id: userId,
+          loyaltyPoints: { gte: option.points },
+        },
+        data: {
+          loyaltyPoints: { decrement: option.points },
+        },
       });
 
-      if (!user) {
-        throw new NotFoundException('Người dùng không tồn tại.');
-      }
-
-      if (user.loyaltyPoints < option.points) {
+      if (debit.count !== 1) {
+        const user = await tx.user.findUnique({
+          where: { id: userId },
+        });
+        if (!user) {
+          throw new NotFoundException('Người dùng không tồn tại.');
+        }
         throw new BadRequestException(
           `Bạn cần tối thiểu ${option.points} điểm để đổi mã này.`,
         );
       }
 
-      const updatedUser = await tx.user.update({
+      const updatedUser = await tx.user.findUnique({
         where: { id: userId },
-        data: {
-          loyaltyPoints: { decrement: option.points },
-        },
+        select: { loyaltyPoints: true },
       });
 
       await tx.loyaltyTransaction.create({
@@ -207,7 +227,7 @@ export class PromotionsService {
         },
       });
 
-      const code = `${option.prefix}-${Date.now().toString(36).toUpperCase()}`;
+      const code = `${option.prefix}-${randomBytes(6).toString('hex').toUpperCase()}`;
 
       await tx.voucher.create({
         data: {
@@ -227,7 +247,7 @@ export class PromotionsService {
         message: 'Đổi điểm thành công!',
         code,
         discountValue: option.value,
-        remainingPoints: updatedUser.loyaltyPoints,
+        remainingPoints: updatedUser?.loyaltyPoints ?? 0,
       };
     });
   }

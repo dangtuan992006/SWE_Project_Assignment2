@@ -1,4 +1,4 @@
-import { IsEnum, IsNumber, IsOptional } from 'class-validator';
+import { IsEnum, IsNumber, IsOptional, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export enum StockAction {
@@ -8,10 +8,11 @@ export enum StockAction {
 
 export class UpdateIngredientStockDto {
   @ApiProperty({
-    description: 'Số lượng cần điều chỉnh (số dương)',
+    description: 'Số lượng cần điều chỉnh (không âm)',
     example: 1000,
   })
   @IsNumber()
+  @Min(0)
   quantity: number;
 
   @ApiPropertyOptional({

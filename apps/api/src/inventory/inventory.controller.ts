@@ -146,8 +146,11 @@ export class InventoryController {
     description: 'Chỉ nhân viên (BARISTA/ADMIN) mới có quyền truy cập.',
   })
   async getAuditLogs(@Query('limit') limit?: string) {
-    const parsedLimit = limit ? parseInt(limit, 10) : 100;
-    return this.inventoryService.getAuditLogs(parsedLimit);
+    const parsed = limit ? parseInt(limit, 10) : NaN;
+    const safeLimit = Number.isFinite(parsed)
+      ? Math.min(Math.max(parsed, 1), 500)
+      : 100;
+    return this.inventoryService.getAuditLogs(safeLimit);
   }
 
   @Get('recipes')
