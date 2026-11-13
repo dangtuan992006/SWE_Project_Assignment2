@@ -5,16 +5,20 @@
  * ==============================================================================
  *
  * Cách chạy:
- *   node tests/e2e-checkout.flow.mjs [API_BASE_URL]
+ *   node tests/e2e-checkout.flow.mjs [API_BASE_URL] [--smoke]
  *
- * Mặc định API_BASE_URL: http://localhost:3001
+ * Mặc định API_BASE_URL: http://localhost:8080
  * Ví dụ chạy test với môi trường Production / Staging:
- *   node tests/e2e-checkout.flow.mjs https://api-brewlite.onrender.com
+ *   node tests/e2e-checkout.flow.mjs https://brewlite-api-2tuk.onrender.com
+ *   node tests/e2e-checkout.flow.mjs --smoke https://brewlite-api-2tuk.onrender.com
  */
 
 import { randomUUID } from 'node:crypto';
 
-const BASE_URL = process.argv[2] || process.env.API_URL || 'http://localhost:3001';
+const args = process.argv.slice(2);
+const isSmokeMode = args.includes('--smoke');
+const urlArg = args.find((arg) => arg.length > 0 && !arg.startsWith('--'));
+const BASE_URL = (urlArg || process.env.API_URL || 'http://localhost:8080').replace(/\/+$/, '');
 
 const colors = {
   reset: '\x1b[0m',
@@ -78,12 +82,13 @@ async function main() {
   console.log(`${colors.bold}${colors.yellow}==============================================================${colors.reset}`);
   console.log(`${colors.bold}   BrewLite E2E Integration Test Runner - Assignment 2        ${colors.reset}`);
   console.log(`   Target Server: ${colors.cyan}${BASE_URL}${colors.reset}`);
+  console.log(`   Chế độ chạy:   ${colors.cyan}${isSmokeMode ? 'Smoke Check (Read-Only)' : 'Full E2E Flow'}${colors.reset}`);
   console.log(`   Thời gian chạy: ${new Date().toISOString()}`);
   console.log(`${colors.bold}${colors.yellow}==============================================================${colors.reset}`);
 
   // Biến chia sẻ qua các bước
   let selectedProduct = null;
-  let testUser = {
+  const testUser = {
     email: `e2e_user_${Date.now()}_${Math.floor(Math.random() * 1000)}@brewlite.test`,
     password: 'MatKhau123!Secure',
     fullName: 'Tester Kiểm Thử E2E',
@@ -94,9 +99,9 @@ async function main() {
 
   // BƯỚC 1: Health Check
   logStep(1, 'Kiểm tra độ sẵn sàng của máy chủ (Health Check Endpoint)');
-  await runTest('Kiểm tra GET /health hoặc GET /', async () => {
+  await runTest('Kiểm tra GET /health', async () => {
     let res = await request('/health');
-    if (res.status === 404) {
+    if (res.status === 404 && !isSmokeMode) {
       res = await request('/');
     }
     if (res.status !== 200) {
@@ -109,7 +114,7 @@ async function main() {
   if (failedCount > 0) {
     console.log(`\n${colors.red}${colors.bold}LƯU Ý: Không thể kết nối tới Server API tại ${BASE_URL}.${colors.reset}`);
     console.log(`Vui lòng khởi động backend API trước khi chạy kịch bản này:`);
-    console.log(`  cd apps/api && pnpm start:dev`);
+    console.log(`  cd apps/api && npm run start:dev`);
     console.log(`hoặc chạy qua Docker Compose:`);
     console.log(`  docker compose up -d\n`);
     process.exit(1);
@@ -125,13 +130,19 @@ async function main() {
     if (res.data.length === 0) {
       throw new Error('Danh mục đồ uống rỗng. Hãy chạy npm run prisma:seed để nạp dữ liệu mẫu.');
     }
-    selectedProduct = res.data.find(p => p.stock > 0) || res.data[0];
+    selectedProduct =
+      res.data.find((p) => p.isAvailable !== false && p.stock > 0) ||
+      res.data.find((p) => p.stock > 0) ||
+      res.data[0];
     logPass(`Lấy thành công danh mục: ${res.data.length} món đồ uống. Chọn thử nghiệm: "${selectedProduct.name}" (ID: ${selectedProduct.id})`);
   });
 
   // BƯỚC 3: Xem chi tiết sản phẩm và tùy chọn (US-02, US-03 / FR-04, FR-05)
-  logStep(3, `Xem chi tiết sản phẩm và bảng giá theo Size/Topping (GET /products/${selectedProduct.id})`);
+  logStep(3, `Xem chi tiết sản phẩm và bảng giá theo Size/Topping (GET /products/${selectedProduct?.id ?? '<missing>'})`);
   await runTest('Xác thực thông tin chi tiết sản phẩm và size/topping', async () => {
+    if (!selectedProduct) {
+      throw new Error('Không có sản phẩm từ Bước 2 để kiểm tra chi tiết.');
+    }
     const res = await request(`/products/${selectedProduct.id}`);
     if (res.status !== 200 || !res.data || !res.data.id) {
       throw new Error(`Không lấy được chi tiết sản phẩm HTTP ${res.status}`);
@@ -143,138 +154,233 @@ async function main() {
     logPass(`Sản phẩm "${p.name}": Size M = ${p.priceM} VNĐ, Số lượng tồn kho = ${p.stock}`);
   });
 
-  // BƯỚC 4: Đăng ký tài khoản khách hàng mới (UC-01 / FR-01)
-  logStep(4, `Đăng ký tài khoản khách hàng mới (POST /auth/register)`);
-  await runTest('Tạo tài khoản khách hàng mới', async () => {
-    const res = await request('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(testUser),
+  if (isSmokeMode) {
+    logStep(4, 'Kiểm tra cấu hình cổng thanh toán ở chế độ chỉ đọc (GET /payments/config)');
+    await runTest('Xác thực GET /payments/config trả về provider hợp lệ', async () => {
+      const res = await request('/payments/config');
+      if (res.status !== 200 || (res.data?.provider !== 'MOCK' && res.data?.provider !== 'VNPAY')) {
+        throw new Error(`Cấu hình thanh toán không hợp lệ (HTTP ${res.status}): ${JSON.stringify(res.data)}`);
+      }
+      logPass(`Cấu hình thanh toán hợp lệ: provider = ${res.data.provider}`);
     });
-    if (res.status !== 201 && res.status !== 200) {
-      throw new Error(`Đăng ký thất bại với mã HTTP ${res.status}: ${JSON.stringify(res.data)}`);
+  } else {
+    if (!selectedProduct) {
+      process.exit(1);
     }
-    if (res.data.password || res.data.passwordHash) {
-      throw new Error('Lỗ hổng bảo mật: API trả về password/passwordHash trong response!');
-    }
-    logPass(`Đăng ký tài khoản thành công: ${testUser.email}`);
-  });
 
-  // BƯỚC 5: Đăng nhập nhận JWT Token (UC-02 / FR-02, NFR-03)
-  logStep(5, `Đăng nhập để nhận Bearer Access Token (POST /auth/login)`);
-  await runTest('Đăng nhập và xác thực JWT token', async () => {
-    const res = await request('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({
-        email: testUser.email,
-        password: testUser.password,
-      }),
-    });
-    if (res.status !== 200 || !res.data.accessToken) {
-      throw new Error(`Đăng nhập thất bại: ${JSON.stringify(res.data)}`);
-    }
-    authToken = res.data.accessToken;
-    logPass(`Đăng nhập thành công, nhận JWT Token (độ dài: ${authToken.length} ký tự)`);
-  });
-
-  // BƯỚC 6: Tạo đơn hàng với Idempotency Key (UC-03 / FR-12, NFR-10)
-  logStep(6, `Tạo đơn hàng kèm Idempotency-Key chống trùng (POST /orders)`);
-  const orderPayload = {
-    items: [
-      {
-        productId: selectedProduct.id,
-        size: 'M',
-        quantity: 2,
-        toppingIds: selectedProduct.toppingOptions && selectedProduct.toppingOptions[0] ? [selectedProduct.toppingOptions[0].id] : [],
-      },
-    ],
-    note: 'Đơn hàng kiểm thử E2E tự động - Ít ngọt, nhiều đá',
-  };
-
-  await runTest('Tạo đơn hàng thành công trạng thái PENDING', async () => {
-    const res = await request('/orders', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-        'Idempotency-Key': idempotencyKey,
-      },
-      body: JSON.stringify(orderPayload),
+    // BƯỚC 4: Đăng ký tài khoản khách hàng mới (UC-01 / FR-01)
+    logStep(4, 'Đăng ký tài khoản khách hàng mới (POST /auth/register)');
+    await runTest('Tạo tài khoản khách hàng mới', async () => {
+      const res = await request('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(testUser),
+      });
+      if (res.status !== 201 && res.status !== 200) {
+        throw new Error(`Đăng ký thất bại với mã HTTP ${res.status}: ${JSON.stringify(res.data)}`);
+      }
+      if (res.data.password || res.data.passwordHash) {
+        throw new Error('Lỗ hổng bảo mật: API trả về password/passwordHash trong response!');
+      }
+      logPass(`Đăng ký tài khoản thành công: ${testUser.email}`);
     });
 
-    if (res.status !== 201 && res.status !== 200) {
-      throw new Error(`Tạo đơn thất bại (HTTP ${res.status}): ${JSON.stringify(res.data)}`);
-    }
-    const order = res.data;
-    currentOrderId = order.orderId || order.id;
-    if (!currentOrderId) {
-      throw new Error('API không trả về orderId trong response');
-    }
-    if (order.status !== 'PENDING') {
-      throw new Error(`Trạng thái ban đầu không đúng: ${order.status} (kỳ vọng PENDING)`);
-    }
-    logPass(`Tạo đơn hàng thành công: ID = ${currentOrderId}, Trạng thái = ${order.status}, Tổng tiền = ${order.totalAmount}`);
-  });
-
-  // BƯỚC 7: Kiểm tra cơ chế chống Replay Attack / Chống trùng đơn (Idempotency Key)
-  logStep(7, `Kiểm tra khả năng bảo vệ trùng lặp với cùng Idempotency-Key (Replay Protection)`);
-  await runTest('Gửi lại cùng Idempotency-Key trả về cùng đơn hàng cũ', async () => {
-    const res = await request('/orders', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-        'Idempotency-Key': idempotencyKey,
-      },
-      body: JSON.stringify(orderPayload),
+    // BƯỚC 5: Đăng nhập nhận JWT Token (UC-02 / FR-02, NFR-03)
+    logStep(5, 'Đăng nhập để nhận Bearer Access Token (POST /auth/login)');
+    await runTest('Đăng nhập và xác thực JWT token', async () => {
+      const res = await request('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: testUser.email,
+          password: testUser.password,
+        }),
+      });
+      if (res.status !== 200 || !res.data.accessToken) {
+        throw new Error(`Đăng nhập thất bại: ${JSON.stringify(res.data)}`);
+      }
+      authToken = res.data.accessToken;
+      logPass(`Đăng nhập thành công, nhận JWT Token (độ dài: ${authToken.length} ký tự)`);
     });
 
-    if (res.status !== 200 && res.status !== 201) {
-      throw new Error(`Yêu cầu lặp lại thất bại: HTTP ${res.status}`);
-    }
-    const duplicateOrderId = res.data.orderId || res.data.id;
-    if (duplicateOrderId !== currentOrderId) {
-      throw new Error(`Idempotency thất bại: tạo đơn mới (${duplicateOrderId}) thay vì trả về đơn cũ (${currentOrderId})!`);
-    }
-    logPass(`Hệ thống nhận diện đúng Idempotency-Key: Giữ nguyên đơn ${currentOrderId}, không tạo trùng đơn.`);
-  });
+    // BƯỚC 6: Tạo đơn hàng với Idempotency Key (UC-03 / FR-12, NFR-10)
+    logStep(6, 'Tạo đơn hàng kèm Idempotency-Key chống trùng (POST /orders)');
+    const availableTopping = selectedProduct.toppingOptions?.find((t) => t.isAvailable !== false);
+    const orderPayload = {
+      items: [
+        {
+          productId: selectedProduct.id,
+          size: 'M',
+          quantity: 2,
+          toppingIds: availableTopping ? [availableTopping.id] : [],
+        },
+      ],
+      note: 'Đơn hàng kiểm thử E2E tự động - Ít ngọt, nhiều đá',
+    };
 
-  // BƯỚC 8: Khởi tạo thanh toán không tiền mặt VNPay (UC-04 / FR-13)
-  logStep(8, `Khởi tạo phiên thanh toán không tiền mặt VNPay (POST /payments)`);
-  await runTest('Tạo liên kết thanh toán VNPay', async () => {
-    const res = await request('/payments', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-      },
-      body: JSON.stringify({
-        orderId: currentOrderId,
-        paymentMethod: 'VNPAY',
-        bankCode: 'NCB',
-      }),
+    await runTest('Tạo đơn hàng thành công trạng thái PENDING', async () => {
+      const res = await request('/orders', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          'Idempotency-Key': idempotencyKey,
+        },
+        body: JSON.stringify(orderPayload),
+      });
+
+      if (res.status !== 201 && res.status !== 200) {
+        throw new Error(`Tạo đơn thất bại (HTTP ${res.status}): ${JSON.stringify(res.data)}`);
+      }
+      const order = res.data;
+      currentOrderId = order.orderId || order.id;
+      if (!currentOrderId) {
+        throw new Error('API không trả về orderId trong response');
+      }
+      if (order.status !== 'PENDING') {
+        throw new Error(`Trạng thái ban đầu không đúng: ${order.status} (kỳ vọng PENDING)`);
+      }
+      logPass(`Tạo đơn hàng thành công: ID = ${currentOrderId}, Trạng thái = ${order.status}, Tổng tiền = ${order.totalAmount}`);
     });
 
-    if (res.status !== 201 && res.status !== 200) {
-      throw new Error(`Khởi tạo thanh toán thất bại (HTTP ${res.status}): ${JSON.stringify(res.data)}`);
-    }
-    logPass(`Khởi tạo thanh toán thành công cho đơn hàng ${currentOrderId}.`);
-  });
+    // BƯỚC 7: Kiểm tra cơ chế chống Replay Attack / Chống trùng đơn (Idempotency Key)
+    logStep(7, 'Kiểm tra khả năng bảo vệ trùng lặp với cùng Idempotency-Key (Replay Protection)');
+    await runTest('Gửi lại cùng Idempotency-Key trả về cùng đơn hàng cũ', async () => {
+      const res = await request('/orders', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          'Idempotency-Key': idempotencyKey,
+        },
+        body: JSON.stringify(orderPayload),
+      });
 
-  // BƯỚC 9: Kiểm tra lịch sử đơn hàng của người dùng (US-11 / FR-15)
-  logStep(9, `Truy vấn lịch sử đơn hàng của khách hàng (GET /orders/me)`);
-  await runTest('Khách hàng xem danh sách đơn hàng đã tạo', async () => {
-    const res = await request('/orders/me', {
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-      },
+      if (res.status !== 200 && res.status !== 201) {
+        throw new Error(`Yêu cầu lặp lại thất bại: HTTP ${res.status}`);
+      }
+      const duplicateOrderId = res.data.orderId || res.data.id;
+      if (duplicateOrderId !== currentOrderId) {
+        throw new Error(`Idempotency thất bại: tạo đơn mới (${duplicateOrderId}) thay vì trả về đơn cũ (${currentOrderId})!`);
+      }
+      logPass(`Hệ thống nhận diện đúng Idempotency-Key: Giữ nguyên đơn ${currentOrderId}, không tạo trùng đơn.`);
     });
 
-    if (res.status !== 200 || !Array.isArray(res.data)) {
-      throw new Error(`Không lấy được lịch sử đơn hàng: HTTP ${res.status}`);
-    }
-    const found = res.data.some(o => (o.orderId || o.id) === currentOrderId);
-    if (!found) {
-      throw new Error(`Không tìm thấy đơn hàng ${currentOrderId} trong lịch sử /orders/me`);
-    }
-    logPass(`Đơn hàng ${currentOrderId} hiển thị chính xác trong danh sách lịch sử.`);
-  });
+    // BƯỚC 8: Khởi tạo thanh toán không tiền mặt theo cấu hình provider (UC-04 / FR-13)
+    logStep(8, 'Đọc cấu hình thanh toán (GET /payments/config) và khởi tạo thanh toán');
+    await runTest('Khởi tạo giao dịch thanh toán theo provider (MOCK / VNPAY)', async () => {
+      if (!currentOrderId) {
+        throw new Error('Không có orderId từ Bước 6 để thanh toán');
+      }
+
+      const configRes = await request('/payments/config');
+      if (configRes.status !== 200 || !configRes.data?.provider) {
+        throw new Error(`Không lấy được cấu hình thanh toán (HTTP ${configRes.status}): ${JSON.stringify(configRes.data)}`);
+      }
+
+      const { provider } = configRes.data;
+      if (provider !== 'MOCK' && provider !== 'VNPAY') {
+        throw new Error(`Provider thanh toán không hợp lệ: ${provider}`);
+      }
+
+      const paymentIdempotencyKey = randomUUID();
+
+      if (provider === 'MOCK') {
+        const res = await request('/payments', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+            'Idempotency-Key': paymentIdempotencyKey,
+          },
+          body: JSON.stringify({
+            orderId: currentOrderId,
+            paymentMethod: 'E_WALLET',
+          }),
+        });
+
+        if (res.status !== 200 || res.data?.status !== 'PAID') {
+          throw new Error(`Thanh toán MOCK thất bại (HTTP ${res.status}): ${JSON.stringify(res.data)}`);
+        }
+
+        const firstPaymentId = res.data?.payment?.id;
+        if (!firstPaymentId) {
+          throw new Error(`Thiếu payment.id trong phản hồi thanh toán MOCK: ${JSON.stringify(res.data)}`);
+        }
+
+        const replayRes = await request('/payments', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+            'Idempotency-Key': paymentIdempotencyKey,
+          },
+          body: JSON.stringify({
+            orderId: currentOrderId,
+            paymentMethod: 'E_WALLET',
+          }),
+        });
+
+        const replayedHeader = replayRes.headers.get('idempotent-replayed');
+        const replayPaymentId = replayRes.data?.payment?.id;
+        if (
+          replayRes.status !== 200 ||
+          replayRes.data?.status !== 'PAID' ||
+          replayPaymentId !== firstPaymentId ||
+          (replayedHeader !== 'true' && replayRes.data?.replayed !== true)
+        ) {
+          throw new Error(
+            `Idempotency replay thanh toán MOCK thất bại (HTTP ${replayRes.status}, header=${replayedHeader}): ${JSON.stringify(replayRes.data)}`,
+          );
+        }
+
+        logPass(
+          `Thanh toán MOCK thành công (PAID, paymentId=${firstPaymentId}) và replay xác nhận đúng (Idempotent-Replayed: ${replayedHeader}).`,
+        );
+        return;
+      }
+
+      const res = await request('/payments/vnpay/create', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          'Idempotency-Key': paymentIdempotencyKey,
+        },
+        body: JSON.stringify({
+          orderId: currentOrderId,
+        }),
+      });
+
+      if (res.status !== 200 || !res.data?.paymentUrl) {
+        throw new Error(`Tạo thanh toán VNPay thất bại (HTTP ${res.status}): ${JSON.stringify(res.data)}`);
+      }
+
+      let parsedUrl;
+      try {
+        parsedUrl = new URL(res.data.paymentUrl);
+      } catch {
+        throw new Error(`paymentUrl không hợp lệ: ${res.data.paymentUrl}`);
+      }
+      if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
+        throw new Error(`Giao thức paymentUrl không hợp lệ: ${parsedUrl.protocol}`);
+      }
+
+      logPass(`Tạo liên kết thanh toán VNPay thành công cho đơn hàng ${currentOrderId} (${parsedUrl.origin}).`);
+    });
+
+    // BƯỚC 9: Kiểm tra lịch sử đơn hàng của người dùng (US-11 / FR-15)
+    logStep(9, 'Truy vấn lịch sử đơn hàng của khách hàng (GET /orders/me)');
+    await runTest('Khách hàng xem danh sách đơn hàng đã tạo', async () => {
+      const res = await request('/orders/me', {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      if (res.status !== 200 || !Array.isArray(res.data)) {
+        throw new Error(`Không lấy được lịch sử đơn hàng: HTTP ${res.status}`);
+      }
+      const found = res.data.some((o) => (o.orderId || o.id) === currentOrderId);
+      if (!found) {
+        throw new Error(`Không tìm thấy đơn hàng ${currentOrderId} trong lịch sử /orders/me`);
+      }
+      logPass(`Đơn hàng ${currentOrderId} hiển thị chính xác trong danh sách lịch sử.`);
+    });
+  }
 
   // TỔNG KẾT
   console.log(`\n${colors.bold}${colors.yellow}==============================================================${colors.reset}`);
@@ -284,7 +390,7 @@ async function main() {
   if (failedCount > 0) {
     console.log(`   ${colors.red}✖ Tổng số bài kiểm thử THẤT BẠI (FAILED): ${failedCount}${colors.reset}`);
   } else {
-    console.log(`   ${colors.green}${colors.bold}🎉 100% CÁC BƯỚC LUỒNG END-TO-END ĐỀU THÀNH CÔNG!${colors.reset}`);
+    console.log(`   ${colors.green}${colors.bold}🎉 100% CÁC BƯỚC LUỒNG ${isSmokeMode ? 'SMOKE CHECK' : 'END-TO-END'} ĐỀU THÀNH CÔNG!${colors.reset}`);
   }
   console.log(`${colors.bold}${colors.yellow}==============================================================${colors.reset}\n`);
 
@@ -293,7 +399,7 @@ async function main() {
   }
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('Lỗi ngoài dự kiến khi thực thi E2E runner:', err);
   process.exit(1);
 });
